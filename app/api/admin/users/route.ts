@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity";
+import type { SubscriptionStatus } from "@/types/supabase";
 
 async function assertAdmin() {
   const supabase = await createClient();
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
 
   // ── Action : modifier le statut d'abonnement ────────────────────────────
   if (action === "set_subscription") {
-    const { status } = body.payload as { status: string };
+    const { status } = body.payload as { status: SubscriptionStatus };
     const { error } = await service
       .from("subscriptions")
       .upsert({
