@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
   const limit  = 20;
   const from   = (page - 1) * limit;
 
-  const service = await createServiceClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = await createServiceClient() as any;
 
   let query = service
     .from("profiles")
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
 
   if (!action || !userId) return NextResponse.json({ error: "action et userId requis" }, { status: 400 });
 
-  const service = await createServiceClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = await createServiceClient() as any;
 
   // Récupérer l'email pour le log
   const { data: target } = await service.from("profiles").select("email").eq("id", userId).single() as { data: { email: string } | null; error: unknown };
