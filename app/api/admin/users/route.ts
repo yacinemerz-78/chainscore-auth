@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   const service = await createServiceClient();
 
   // Récupérer l'email pour le log
-  const { data: target } = await service.from("profiles").select("email").eq("id", userId).single();
+  const { data: target } = await service.from("profiles").select("email").eq("id", userId).single() as { data: { email: string } | null; error: unknown };
   const targetEmail = target?.email ?? "unknown";
 
   // ── Action : modifier le statut d'abonnement ────────────────────────────
