@@ -77,7 +77,7 @@ export async function middleware(request: NextRequest) {
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single();
+      .single() as { data: { role: string } | null; error: unknown };
 
     if (profile?.role !== "admin") {
       return NextResponse.redirect(MAIN_APP_URL);
