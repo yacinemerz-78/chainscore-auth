@@ -16,7 +16,7 @@ export default async function AdminPage() {
     .from("profiles")
     .select("role, email, full_name")
     .eq("id", user.id)
-    .single();
+    .single() as { data: { role: string; email: string; full_name: string | null } | null; error: unknown };
 
   if (!profile || profile.role !== "admin") redirect("/login");
 
