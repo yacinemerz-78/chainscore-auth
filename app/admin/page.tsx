@@ -12,11 +12,14 @@ export default async function AdminPage() {
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  // Cast explicite : @supabase/ssr infère `never` sur certaines versions Vercel
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileResult = await (supabase as any)
     .from("profiles")
     .select("role, email, full_name")
     .eq("id", user.id)
-    .single();
+    .single() as { data: { role: string; email: string; full_name: string | null } | null; error: unknown };
+  const profile = profileResult.data;
 
   if (!profile || profile.role !== "admin") redirect("/login");
 
