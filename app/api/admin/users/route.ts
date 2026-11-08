@@ -74,13 +74,12 @@ export async function POST(request: NextRequest) {
   // ── Action : modifier le statut d'abonnement ────────────────────────────
   if (action === "set_subscription") {
     const { status } = body.payload as { status: SubscriptionStatus };
-    const { error } = await service
-      .from("subscriptions")
-      .upsert({
-        user_id: userId,
-        status:  status,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (service.from("subscriptions") as any).upsert({
+      user_id: userId,
+      status:  status,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -98,14 +97,13 @@ export async function POST(request: NextRequest) {
     const days = (body.payload as { days?: number })?.days ?? 7;
     const newEnd = new Date(Date.now() + days * 86400000).toISOString();
 
-    await service
-      .from("subscriptions")
-      .upsert({
-        user_id:  userId,
-        status:   "trialing",
-        trial_end: newEnd,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (service.from("subscriptions") as any).upsert({
+      user_id:  userId,
+      status:   "trialing",
+      trial_end: newEnd,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
 
     await logActivity({
       event_type: "admin_action",
