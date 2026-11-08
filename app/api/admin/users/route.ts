@@ -11,7 +11,7 @@ async function assertAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single() as { data: { role: string } | null; error: unknown };
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return null;
   return user;
 }
@@ -27,8 +27,7 @@ export async function GET(request: NextRequest) {
   const limit  = 20;
   const from   = (page - 1) * limit;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const service = await createServiceClient() as any;
+  const service = await createServiceClient();
 
   let query = service
     .from("profiles")
@@ -64,18 +63,16 @@ export async function POST(request: NextRequest) {
 
   if (!action || !userId) return NextResponse.json({ error: "action et userId requis" }, { status: 400 });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const service = await createServiceClient() as any;
+  const service = await createServiceClient();
 
   // Récupérer l'email pour le log
-  const { data: target } = await service.from("profiles").select("email").eq("id", userId).single() as { data: { email: string } | null; error: unknown };
+  const { data: target } = await service.from("profiles").select("email").eq("id", userId).single();
   const targetEmail = target?.email ?? "unknown";
 
   // ── Action : modifier le statut d'abonnement ────────────────────────────
   if (action === "set_subscription") {
     const { status } = body.payload as { status: SubscriptionStatus };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (service.from("subscriptions") as any).upsert({
+    const { error } = await service.from("subscriptions").upsert({
       user_id: userId,
       status:  status,
       updated_at: new Date().toISOString(),
@@ -97,8 +94,7 @@ export async function POST(request: NextRequest) {
     const days = (body.payload as { days?: number })?.days ?? 7;
     const newEnd = new Date(Date.now() + days * 86400000).toISOString();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (service.from("subscriptions") as any).upsert({
+    await service.from("subscriptions").upsert({
       user_id:  userId,
       status:   "trialing",
       trial_end: newEnd,

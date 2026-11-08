@@ -8,7 +8,6 @@
  */
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "@/types/supabase";
 
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL ?? "";
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL ?? "https://chainscore-app.vercel.app";
@@ -28,7 +27,8 @@ const PUBLIC_PATHS = [
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient<Database>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = createServerClient<any>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -77,7 +77,7 @@ export async function middleware(request: NextRequest) {
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single() as { data: { role: string } | null; error: unknown };
+      .single();
 
     if (profile?.role !== "admin") {
       return NextResponse.redirect(MAIN_APP_URL);
