@@ -15,6 +15,15 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity";
+import type { SubscriptionStatus } from "@/types/supabase";
+
+/** Convertit un statut Stripe en SubscriptionStatus DB (fallback = "canceled") */
+function toDbStatus(s: string): SubscriptionStatus {
+  const known: SubscriptionStatus[] = [
+    "trialing","active","past_due","canceled","incomplete","incomplete_expired","unpaid"
+  ];
+  return known.includes(s as SubscriptionStatus) ? (s as SubscriptionStatus) : "canceled";
+}
 
 // Désactiver le body parser Next.js pour cette route (nécessaire pour Stripe)
 export const runtime = "nodejs";
@@ -113,7 +122,7 @@ export async function POST(request: NextRequest) {
         // Récupérer les détails de la subscription pour avoir les dates
         let trialEnd: string | null = null;
         let currentPeriodEnd: string | null = null;
-        let subStatus = "trialing";
+        let subStatus: SubscriptionStatus = "trialing";
 
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
@@ -123,7 +132,7 @@ export async function POST(request: NextRequest) {
           currentPeriodEnd = sub.current_period_end
             ? new Date(sub.current_period_end * 1000).toISOString()
             : null;
-          subStatus = sub.status;
+          subStatus = toDbStatus(sub.status);
         }
 
         const { error } = await service.from("subscriptions").upsert(
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
             user_id:                userId,
             stripe_customer_id:     customerId,
             stripe_subscription_id: sub.id,
-            status:                 sub.status,
+            status:                 toDbStatus(sub.status),
             trial_end:              sub.trial_end
               ? new Date(sub.trial_end * 1000).toISOString()
               : null,
