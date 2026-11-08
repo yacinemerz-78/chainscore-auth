@@ -32,7 +32,7 @@ async function handleOptions(request: NextRequest) {
 
     // Si un email est fourni, on récupère les clés de cet utilisateur
     // Sinon, challenge "discoverable" (l'appareil choisit la clé)
-    let allowCredentials: { id: string; type: "public-key" }[] = [];
+    let allowCredentials: { id: Uint8Array; type: "public-key" }[] = [];
 
     if (email) {
       // Trouver le user par email
@@ -49,7 +49,7 @@ async function handleOptions(request: NextRequest) {
           .eq("user_id", profile.id);
 
         allowCredentials = (creds ?? []).map((c) => ({
-          id: c.credential_id,
+          id: Buffer.from(c.credential_id, "base64url"),
           type: "public-key" as const,
         }));
       }
