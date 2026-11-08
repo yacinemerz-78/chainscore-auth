@@ -39,14 +39,14 @@ async function handleOptions(request: NextRequest) {
       .eq("user_id", user.id);
 
     const excludeCredentials = (existingCreds ?? []).map((c) => ({
-      id: c.credential_id,
+      id: Buffer.from(c.credential_id, "base64url"),
       type: "public-key" as const,
     }));
 
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
       rpID: RP_ID,
-      userID: new TextEncoder().encode(user.id),
+      userID: user.id,
       userName: user.email ?? user.id,
       userDisplayName: user.user_metadata?.full_name ?? user.email ?? "Utilisateur",
       excludeCredentials,
@@ -114,7 +114,7 @@ async function handleVerify(request: NextRequest) {
       return NextResponse.json({ error: "Vérification échouée." }, { status: 400 });
     }
 
-    const { credential } = verification.registrationInfo;
+    const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
 
     // Supprimer le challenge utilisé
     await serviceClient
@@ -128,9 +128,9 @@ async function handleVerify(request: NextRequest) {
       .from("webauthn_credentials")
       .insert({
         user_id:       user.id,
-        credential_id: credential.id,
-        public_key:    Buffer.from(credential.publicKey).toString("base64url"),
-        counter:       credential.counter,
+        credential_id: Buffer.from(credentialID).toString("base64url"),
+        public_key:    Buffer.from(credentialPublicKey).toString("base64url"),
+        counter:       counter,
         device_name:   deviceName,
       });
 

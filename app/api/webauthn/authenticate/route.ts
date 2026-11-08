@@ -115,9 +115,9 @@ async function handleVerify(request: NextRequest) {
       expectedChallenge: challengeRow.challenge,
       expectedOrigin: ORIGIN,
       expectedRPID: RP_ID,
-      credential: {
-        id: credential.credential_id,
-        publicKey: Buffer.from(credential.public_key, "base64url"),
+      authenticator: {
+        credentialID: Buffer.from(credential.credential_id, "base64url"),
+        credentialPublicKey: Buffer.from(credential.public_key, "base64url"),
         counter: credential.counter,
       },
       requireUserVerification: true,
@@ -159,7 +159,6 @@ async function handleVerify(request: NextRequest) {
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: "magiclink",
       email: profile.email,
-      options: { expiresIn: 60 },
     });
 
     if (linkError || !linkData.properties?.hashed_token) {

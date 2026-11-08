@@ -47,7 +47,7 @@ export default function BiometricButton({ email, onSuccess, onError }: Props) {
       const options = await optionsRes.json();
 
       // 2. Invoquer l'API biométrique du navigateur (Face ID / Touch ID / Windows Hello)
-      const authResponse = await startAuthentication({ optionsJSON: options });
+      const authResponse = await startAuthentication(options);
 
       // 3. Envoyer la réponse au serveur pour vérification
       const verifyRes = await fetch("/api/webauthn/authenticate/verify", {
