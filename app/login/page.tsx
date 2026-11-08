@@ -1,7 +1,12 @@
 "use client";
 /**
  * Page de connexion — email/password + OAuth (Google, GitHub, Apple) + WebAuthn
+ *
+ * LoginPageClient est un composant client qui utilise useSearchParams().
+ * Il est enveloppé dans <Suspense> par le Server Component par défaut (LoginPage)
+ * pour éviter l'erreur de prerender Next.js au build.
  */
+import { Suspense } from "react";
 import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -14,6 +19,14 @@ import OAuthButtons from "@/components/ui/OAuthButtons";
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL ?? "https://chainscore-app.vercel.app";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageClient />
+    </Suspense>
+  );
+}
+
+function LoginPageClient() {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
