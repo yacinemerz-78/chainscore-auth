@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   "/auth/callback",
   "/api/webauthn",
   "/api/auth",
+  "/api/stripe/webhook", // le webhook Stripe n'est pas authentifié (signature HMAC)
   "/_next",
   "/favicon",
 ];
