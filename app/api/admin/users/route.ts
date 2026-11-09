@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       id, email, full_name, role, created_at,
       subscriptions ( status, trial_end, current_period_end, stripe_customer_id )
     `, { count: "exact" })
-    .eq("role", "user")
+    .neq("role", "admin")  // affiche tous les non-admins, même ceux sans abonnement
     .order("created_at", { ascending: false })
     .range(from, from + limit - 1);
 

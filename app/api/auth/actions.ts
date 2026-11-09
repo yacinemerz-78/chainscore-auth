@@ -166,6 +166,25 @@ export async function signUp(formData: FormData) {
       user_email: data.user.email,
       metadata:   { method: "email" },
     });
+
+    // Filet de sécurité : s'assure qu'une ligne existe dans profiles même si le
+    // trigger Supabase `on_auth_user_created` n'a pas tourné (schéma non appliqué,
+    // projet réinitialisé, etc.). on_conflict: id → no-op si la ligne existe déjà.
+    try {
+      const service = await createServiceClient();
+      await service.from("profiles").upsert(
+        {
+          id:        data.user.id,
+          email:     data.user.email ?? "",
+          full_name: fullName,
+          role:      "user",
+        },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+    } catch (err) {
+      // Non bloquant : le trigger a peut-être déjà inséré la ligne
+      console.warn("[auth/actions] upsert profiles fallback échoué :", err);
+    }
   }
 
   if (data.session) {
