@@ -7,11 +7,21 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity";
 import type { SubscriptionStatus } from "@/types/supabase";
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "";
+
 async function assertAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+
+  // Bypass ADMIN_EMAIL (même logique que middleware et admin/page.tsx)
+  const adminEmailTrimmed = ADMIN_EMAIL.trim();
+  const userEmailTrimmed  = (user.email ?? "").trim();
+  if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) return user;
+
+  // Fallback : vérification rôle en DB via service_role (bypass RLS)
+  const service = await createServiceClient();
+  const { data: profile } = await service.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return null;
   return user;
 }

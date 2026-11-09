@@ -24,7 +24,10 @@ export default async function HomePage() {
 
   // ── Bypass admin : ne jamais passer par le check d'abonnement Stripe ──────
   // Vérification 1 : email correspond à ADMIN_EMAIL
-  if (ADMIN_EMAIL && user.email === ADMIN_EMAIL) {
+  // .trim() des deux côtés pour éviter les espaces invisibles dans les env vars
+  const adminEmailTrimmed = ADMIN_EMAIL.trim();
+  const userEmailTrimmed  = (user.email ?? "").trim();
+  if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) {
     redirect("/admin");
   }
 
