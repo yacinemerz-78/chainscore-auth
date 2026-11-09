@@ -170,7 +170,11 @@ export async function signUp(formData: FormData) {
 
   if (data.session) {
     revalidatePath("/", "layout");
-    redirect("/register/checkout");
+    // On retourne l'URL plutôt que d'appeler redirect() directement.
+    // redirect() dans une Server Action + startTransition est silencieusement
+    // avalé par React, et l'ID d'action devient périmé après un redéploiement
+    // ("Failed to find Server Action"). La navigation est déléguée au composant client.
+    return { success: true, redirect: "/register/checkout" };
   }
 
   return { success: true, message: "Un email de confirmation t'a été envoyé. Vérifie ta boîte mail." };

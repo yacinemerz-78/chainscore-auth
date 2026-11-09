@@ -37,8 +37,16 @@ export default function RegisterPage() {
 
     startTransition(async () => {
       const result = await signUp(formData);
-      if (result?.error)   setError(result.error);
-      if (result?.success) setSuccess(result.message ?? "Vérifie ta boîte mail !");
+      if (!result) return;
+      if (result.error) { setError(result.error); return; }
+      // Session créée immédiatement (pas de confirmation email requise) :
+      // window.location.replace() AVANT tout setState — même pattern que signIn.
+      if ("redirect" in result && result.redirect) {
+        window.location.replace(result.redirect);
+        return;
+      }
+      // Email de confirmation envoyé → afficher le message, pas de redirection
+      if (result.success) setSuccess(result.message ?? "Vérifie ta boîte mail !");
     });
   };
 
