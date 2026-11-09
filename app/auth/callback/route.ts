@@ -41,7 +41,7 @@ export async function GET(request: Request) {
         metadata:   { provider: user.app_metadata?.provider ?? "unknown" },
       });
 
-      // 1. Routage admin (double vérification)
+      // 1. Routage admin (double vérification : ADMIN_EMAIL + rôle DB)
       //    Court-circuit : l'admin ne passe pas par la vérification d'abonnement
       if (ADMIN_EMAIL && user.email === ADMIN_EMAIL) {
         const { data: profile } = await supabase
@@ -50,10 +50,15 @@ export async function GET(request: Request) {
           .eq("id", user.id)
           .single() as { data: { role: string } | null; error: unknown };
 
-        // Redirige vers /admin que le rôle soit confirmé ou non (évite le tunnel checkout)
-        if (!profile || profile.role === "admin") {
+        // Redirige vers /admin si :
+        //  - le rôle est explicitement 'admin' en base, OU
+        //  - le profil est absent (failsafe : évite de bloquer l'admin dans le tunnel checkout
+        //    si la ligne profiles n'a pas encore été créée)
+        if (profile?.role === "admin" || !profile) {
           return NextResponse.redirect(`${origin}/admin`);
         }
+        // Si le profil existe mais role !== 'admin' → on laisse passer au flux normal
+        // (ne devrait pas arriver si la DB est correctement configurée)
       }
 
       // 2. next explicite (ex: magic link WebAuthn avec ?next=/register/checkout)
