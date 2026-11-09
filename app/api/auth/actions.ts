@@ -53,11 +53,27 @@ async function hasActiveSubscription(userId: string): Promise<boolean> {
 
 /** Détermine où rediriger après connexion selon le rôle et le statut d'abonnement */
 async function getPostLoginRedirect(userId: string, email: string): Promise<string> {
-  // 1. Admin → /admin (double vérification email + rôle DB via service_role)
-  //    Court-circuit : l'admin ne passe JAMAIS par la vérification d'abonnement Stripe.
-  //    On utilise createServiceClient() pour bypasser la RLS sur public.profiles.
-  if (ADMIN_EMAIL && email === ADMIN_EMAIL) {
-    console.log(`[auth/actions] Admin email détecté (${email}), vérification du rôle DB...`);
+  // ── DIAGNOSTIC BLOC — logs exhaustifs pour Vercel Functions ────────────────
+  const rawAdminEmail = process.env.ADMIN_EMAIL;
+  const adminEmailTrimmed = (rawAdminEmail ?? "").trim();
+  const emailTrimmed = email.trim();
+
+  console.log("[auth/actions][diag] ─────────────────────────────────────────");
+  console.log(`[auth/actions][diag] email reçu         : "${email}"`);
+  console.log(`[auth/actions][diag] email.trim()       : "${emailTrimmed}"`);
+  console.log(`[auth/actions][diag] ADMIN_EMAIL raw     : ${rawAdminEmail === undefined ? "UNDEFINED (variable absente sur Vercel)" : `"${rawAdminEmail}"`}`);
+  console.log(`[auth/actions][diag] ADMIN_EMAIL.trim()  : "${adminEmailTrimmed}"`);
+  console.log(`[auth/actions][diag] match (strict)      : ${email === rawAdminEmail}`);
+  console.log(`[auth/actions][diag] match (trim)        : ${emailTrimmed === adminEmailTrimmed}`);
+  console.log("[auth/actions][diag] ─────────────────────────────────────────");
+
+  // 1. Admin → /admin
+  //    Comparaison avec trim() pour neutraliser espaces invisibles.
+  //    Court-circuit ABSOLU : on retourne /admin sans aucune condition DB.
+  if (adminEmailTrimmed && emailTrimmed === adminEmailTrimmed) {
+    console.log(`[auth/actions] ✅ Admin identifié par email — redirection /admin forcée`);
+
+    // Lecture DB pour le log uniquement (n'affecte PAS la redirection)
     try {
       const serviceSupabase = await createServiceClient();
       const { data, error } = await serviceSupabase
@@ -65,24 +81,16 @@ async function getPostLoginRedirect(userId: string, email: string): Promise<stri
         .select("role")
         .eq("id", userId)
         .single();
-
       if (error) {
-        console.error("[auth/actions] Erreur lecture profil DB (service_role) :", error.message);
-        // Failsafe : email admin reconnu mais profil illisible → on donne quand même /admin
-        return "/admin";
+        console.warn(`[auth/actions][diag] Profil DB illisible (${error.message}) — redirection /admin quand même`);
+      } else {
+        console.log(`[auth/actions][diag] Profil DB lu — role="${data?.role ?? "null"}"`);
       }
-
-      console.log(`[auth/actions] Profil DB lu — role=${data?.role ?? "null"}`);
-
-      if (data?.role === "admin") return "/admin";
-      // Email admin mais rôle non 'admin' en DB → failsafe vers /admin
-      // (évite de bloquer l'admin dans le tunnel checkout si la DB n'est pas encore à jour)
-      console.warn(`[auth/actions] ⚠️ Email admin mais role=${data?.role} en DB. Vérifier public.profiles. Redirection /admin quand même (failsafe).`);
-      return "/admin";
     } catch (err) {
-      console.error("[auth/actions] Exception lors de la vérification admin :", err);
-      return "/admin"; // Failsafe
+      console.warn("[auth/actions][diag] Exception lecture DB :", err);
     }
+
+    return "/admin"; // ← ABSOLU : jamais de checkout pour l'admin
   }
 
   // 2. Utilisateur avec abonnement actif/essai → app principale
