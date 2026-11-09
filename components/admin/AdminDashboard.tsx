@@ -106,10 +106,16 @@ export default function AdminDashboard({ adminEmail, adminName }: AdminDashboard
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), q: search });
     const res = await fetch(`/api/admin/users?${params}`);
+    const data = await res.json();
     if (res.ok) {
-      const data = await res.json();
-      setUsers(data.users);
-      setTotal(data.total);
+      setUsers(data.users ?? []);
+      setTotal(data.total ?? 0);
+    } else {
+      // Erreur API (403, 500…) — on vide la liste et on affiche un toast
+      setUsers([]);
+      setTotal(0);
+      showToast(data?.error ?? `Erreur ${res.status}`, "err");
+      console.error("[AdminDashboard] fetchUsers error:", res.status, data);
     }
     setLoading(false);
   }, [page, search]);

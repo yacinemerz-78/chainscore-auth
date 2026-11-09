@@ -13,18 +13,31 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "";
 
 async function assertAdmin() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError) console.warn("[admin/users] getUser error:", authError.message);
+  if (!user) {
+    console.warn("[admin/users] assertAdmin: pas de session utilisateur");
+    return null;
+  }
 
   // Bypass ADMIN_EMAIL (même logique que middleware et admin/page.tsx)
   const adminEmailTrimmed = ADMIN_EMAIL.trim();
   const userEmailTrimmed  = (user.email ?? "").trim();
-  if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) return user;
+  if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) {
+    console.log(`[admin/users] assertAdmin: admin identifié par email (${userEmailTrimmed})`);
+    return user;
+  }
 
   // Fallback : vérification rôle en DB via service_role (bypass RLS)
   const service = await createServiceClient();
-  const { data: profile } = await service.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin") return null;
+  const { data: profile, error: profileError } = await service
+    .from("profiles").select("role").eq("id", user.id).single();
+  if (profileError) console.warn("[admin/users] lecture profil:", profileError.message);
+  if (profile?.role !== "admin") {
+    console.warn(`[admin/users] assertAdmin: rôle refusé (role="${profile?.role}", email="${userEmailTrimmed}")`);
+    return null;
+  }
   return user;
 }
 
