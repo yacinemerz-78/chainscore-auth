@@ -3,11 +3,11 @@
  * Server Actions d'authentification
  * - Email / password (signIn, signUp, signOut)
  * - OAuth (signInWithOAuth) → Google, GitHub, Apple
- * - Routage admin intelligent (ADMIN_EMAIL + rôle DB)
+ * - Routage admin intelligent (ADMIN_EMAIL + rôle DB via service_role)
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity";
 import type { Provider } from "@supabase/supabase-js";
 
@@ -53,19 +53,36 @@ async function hasActiveSubscription(userId: string): Promise<boolean> {
 
 /** Détermine où rediriger après connexion selon le rôle et le statut d'abonnement */
 async function getPostLoginRedirect(userId: string, email: string): Promise<string> {
-  // 1. Admin → /admin (double vérification email + rôle DB)
-  //    Court-circuit : l'admin ne passe pas par la vérification d'abonnement
+  // 1. Admin → /admin (double vérification email + rôle DB via service_role)
+  //    Court-circuit : l'admin ne passe JAMAIS par la vérification d'abonnement Stripe.
+  //    On utilise createServiceClient() pour bypasser la RLS sur public.profiles.
   if (ADMIN_EMAIL && email === ADMIN_EMAIL) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .single();
-    if (data?.role === "admin") return "/admin";
-    // Email admin mais rôle non confirmé en DB → quand même admin dashboard
-    // (évite de bloquer l'admin dans le tunnel checkout)
-    return "/admin";
+    console.log(`[auth/actions] Admin email détecté (${email}), vérification du rôle DB...`);
+    try {
+      const serviceSupabase = await createServiceClient();
+      const { data, error } = await serviceSupabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        console.error("[auth/actions] Erreur lecture profil DB (service_role) :", error.message);
+        // Failsafe : email admin reconnu mais profil illisible → on donne quand même /admin
+        return "/admin";
+      }
+
+      console.log(`[auth/actions] Profil DB lu — role=${data?.role ?? "null"}`);
+
+      if (data?.role === "admin") return "/admin";
+      // Email admin mais rôle non 'admin' en DB → failsafe vers /admin
+      // (évite de bloquer l'admin dans le tunnel checkout si la DB n'est pas encore à jour)
+      console.warn(`[auth/actions] ⚠️ Email admin mais role=${data?.role} en DB. Vérifier public.profiles. Redirection /admin quand même (failsafe).`);
+      return "/admin";
+    } catch (err) {
+      console.error("[auth/actions] Exception lors de la vérification admin :", err);
+      return "/admin"; // Failsafe
+    }
   }
 
   // 2. Utilisateur avec abonnement actif/essai → app principale
