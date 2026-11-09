@@ -87,14 +87,29 @@ export async function GET(request: NextRequest) {
     .select("user_id, status, trial_end, current_period_end, stripe_customer_id")
     .in("user_id", userIds);
 
-  // Index par user_id pour lookup O(1)
+  // ── 3. Récupérer les dates d'inscription depuis auth.users ────────────────
+  // profiles n'a pas de colonne created_at en base → on lit auth.users via
+  // l'API admin Supabase qui expose toujours created_at sur chaque user.
+  const { createClient: createSupabaseAdminClient } = await import("@supabase/supabase-js");
+  const authAdmin = createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+  const { data: authUsersData } = await authAdmin.auth.admin.listUsers({ perPage: 1000 });
+  const createdAtById: Record<string, string> = Object.fromEntries(
+    (authUsersData?.users ?? []).map((u) => [u.id, u.created_at])
+  );
+
+  // Index abonnements par user_id pour lookup O(1)
   const subByUserId = Object.fromEntries(
     (subscriptions ?? []).map((s) => [s.user_id, s])
   );
 
-  // ── 3. Assembler la réponse ───────────────────────────────────────────────
+  // ── 4. Assembler la réponse ───────────────────────────────────────────────
   const users = profiles.map((p) => ({
     ...p,
+    created_at: createdAtById[p.id] ?? null,
     subscriptions: subByUserId[p.id] ? [subByUserId[p.id]] : [],
   }));
 
