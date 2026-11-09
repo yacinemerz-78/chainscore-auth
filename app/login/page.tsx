@@ -55,11 +55,13 @@ function LoginPageClient() {
         setError(result.error);
         return;
       }
-      // Server Action retourne { redirect: dest } — on navigue côté client
-      // (redirect() dans une SA appelée via startTransition lève NEXT_REDIRECT
-      //  qui est silencieusement avalé par React → pas de navigation)
-      setSuccessMsg("Connexion réussie ! Redirection...");
-      window.location.href = result.redirect;
+      // Server Action retourne { redirect: dest } — on navigue côté client.
+      // IMPORTANT : window.location.replace() AVANT tout setState.
+      // setSuccessMsg() déclenche un re-render React qui peut interrompre
+      // l'exécution du callback avant que la navigation ne parte.
+      // On navigue d'abord (synchrone), puis on met à jour l'UI.
+      const dest = result.redirect;
+      window.location.replace(dest);
     });
   };
 
