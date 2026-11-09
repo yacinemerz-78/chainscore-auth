@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   let profilesQuery = service
     .from("profiles")
     .select("id, email, full_name, role, created_at", { count: "exact" })
-    .neq("role", "admin")
+    .or("role.is.null,role.neq.admin")
     .order("created_at", { ascending: false })
     .range(from, from + limit - 1);
 
