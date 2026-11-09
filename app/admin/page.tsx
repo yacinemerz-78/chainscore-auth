@@ -21,10 +21,12 @@ export default async function AdminPage() {
   }
 
   // createServiceClient() pour lire le profil (bypasse la RLS)
+  // Note : on ne sélectionne que les colonnes existantes dans public.profiles
+  // (full_name n'existe pas dans ce schéma → la requête échouerait)
   const serviceSupabase = await createServiceClient();
   const { data: profile, error: profileError } = await serviceSupabase
     .from("profiles")
-    .select("role, email, full_name")
+    .select("role, email")
     .eq("id", user.id)
     .single();
 
@@ -39,5 +41,5 @@ export default async function AdminPage() {
   }
 
   console.log(`[admin/page] ✅ Accès accordé — user=${user.email}`);
-  return <AdminDashboard adminEmail={profile.email} adminName={profile.full_name} />;
+  return <AdminDashboard adminEmail={profile.email} adminName={null} />;
 }
