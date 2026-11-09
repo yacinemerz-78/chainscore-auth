@@ -15,6 +15,16 @@ const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL ?? "https://chainscore
 const APP_URL      = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL ?? "";
 
+// Alerte immédiate au démarrage si ADMIN_EMAIL n'est pas défini sur Vercel
+// → visible dans les logs Vercel Functions dès le premier appel à actions.ts
+if (!ADMIN_EMAIL) {
+  console.warn(
+    "[auth/actions] ⚠️  ADMIN_EMAIL est vide ou manquant. " +
+    "L'admin sera redirigé vers /register/checkout au lieu de /admin. " +
+    "Configure cette variable dans Vercel → Settings → Environment Variables."
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function translateAuthError(message: string): string {
