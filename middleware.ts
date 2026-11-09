@@ -67,50 +67,60 @@ export async function middleware(request: NextRequest) {
   // ── Protection /admin ────────────────────────────────────────────────────
   if (pathname.startsWith("/admin")) {
     if (!user) {
+      console.warn("[middleware] /admin — non connecté → /login");
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
 
-    // Double vérification : email ET rôle en base
-    const isAdminEmail = user.email === ADMIN_EMAIL;
-    if (!isAdminEmail) {
-      // Redirige vers l'app principale — pas un admin
-      return NextResponse.redirect(MAIN_APP_URL);
+    console.log(`[middleware] /admin — user="${user.email}" ADMIN_EMAIL="${ADMIN_EMAIL}"`);
+
+    // Court-circuit ABSOLU : si email === ADMIN_EMAIL (trim), on laisse passer
+    // sans aucune query DB (la query DB peut échouer en Edge Runtime ou sur RLS).
+    // La vérification de rôle fine est déléguée à app/admin/page.tsx.
+    const adminEmailTrimmed = ADMIN_EMAIL.trim();
+    const userEmailTrimmed  = (user.email ?? "").trim();
+
+    if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) {
+      console.log(`[middleware] ✅ Admin email match — accès /admin accordé`);
+      return supabaseResponse;
     }
 
-    // Vérification rôle en base via service_role (bypasse la RLS)
-    // createServiceClient() n'est pas utilisable ici (cookies() indisponible en Edge Runtime)
-    // → on instancie directement un client service_role sans cookie management
-    const serviceSupabase = createServerClient<any>(  // eslint-disable-line @typescript-eslint/no-explicit-any
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        cookies: {
-          getAll() { return []; },
-          setAll() {},
-        },
+    // Vérification rôle en base via service_role pour les admins sans ADMIN_EMAIL
+    // (cas où le rôle est 'admin' en DB mais email différent de ADMIN_EMAIL)
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const serviceSupabase = createServerClient<any>(  // eslint-disable-line @typescript-eslint/no-explicit-any
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+          cookies: {
+            getAll() { return []; },
+            setAll() {},
+          },
+        }
+      );
+
+      const { data: profile, error: profileError } = await serviceSupabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error("[middleware] Erreur lecture profil DB :", profileError.message);
+      } else if (profile?.role === "admin") {
+        console.log(`[middleware] ✅ Admin rôle DB — accès /admin accordé`);
+        return supabaseResponse;
+      } else {
+        console.warn(`[middleware] /admin refusé — user ${user.email} role=${profile?.role ?? "null"}`);
       }
-    );
-
-    const { data: profile, error: profileError } = await serviceSupabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      console.error("[middleware] Erreur lecture profil DB :", profileError.message);
-      return NextResponse.redirect(MAIN_APP_URL);
+    } else {
+      console.error("[middleware] ⛔ SUPABASE_SERVICE_ROLE_KEY absent — vérification DB impossible");
     }
 
-    if (profile?.role !== "admin") {
-      console.warn(`[middleware] /admin refusé — user ${user.email} role=${profile?.role ?? "null"}`);
-      return NextResponse.redirect(MAIN_APP_URL);
-    }
-
-    return supabaseResponse;
+    // Ni email admin ni rôle admin → refus
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // ── Protection routes utilisateur ────────────────────────────────────────
