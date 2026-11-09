@@ -28,10 +28,43 @@ export async function GET() {
     if (profile?.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
+  // ── Calcul des stats directement en JS (plus fiable que service.rpc) ────────
+  // La fonction SQL `get_admin_stats()` peut retourner NULL si elle n'est pas
+  // encore déployée sur le projet Supabase. On calcule ici les mêmes valeurs
+  // avec des requêtes simples via service_role (bypass RLS garanti).
   const service = await createServiceClient();
-  const { data: stats } = await service.rpc("get_admin_stats");
 
-  return NextResponse.json(stats ?? {
-    total_users: 0, trialing: 0, active: 0, canceled: 0, mrr_estimate: 0,
-  });
+  const [
+    { count: total_users },
+    { count: trialing },
+    { count: active },
+    { count: canceled },
+  ] = await Promise.all([
+    service
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .neq("role", "admin"),
+    service
+      .from("subscriptions")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "trialing"),
+    service
+      .from("subscriptions")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active"),
+    service
+      .from("subscriptions")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "canceled"),
+  ]);
+
+  const stats = {
+    total_users:  total_users  ?? 0,
+    trialing:     trialing     ?? 0,
+    active:       active       ?? 0,
+    canceled:     canceled     ?? 0,
+    mrr_estimate: (active ?? 0) * 2,   // même formule que la RPC SQL
+  };
+
+  return NextResponse.json(stats);
 }
