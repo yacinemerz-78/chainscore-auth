@@ -35,8 +35,11 @@ interface UserRow {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("fr-FR", {
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("fr-FR", {
     day: "2-digit", month: "short", year: "numeric",
   });
 }

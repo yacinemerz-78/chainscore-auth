@@ -61,9 +61,9 @@ export async function GET(request: NextRequest) {
   // remontés, même sans abonnement associé.
   let profilesQuery = service
     .from("profiles")
-    .select("id, email, full_name, role", { count: "exact" })
+    .select("id, email, full_name, role, created_at", { count: "exact" })
     .or("role.is.null,role.neq.admin")
-    .order("email", { ascending: true })
+    .order("created_at", { ascending: false })
     .range(from, from + limit - 1);
 
   if (search) {
