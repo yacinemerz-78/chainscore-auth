@@ -2,6 +2,8 @@
  * GET /api/admin/stats — KPIs du dashboard admin
  * Protégé : service_role + vérification admin en middleware
  */
+export const dynamic = "force-dynamic"; // désactive le cache Vercel sur cette route
+
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";

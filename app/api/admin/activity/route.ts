@@ -1,6 +1,8 @@
 /**
  * GET /api/admin/activity — Journal d'activité (50 dernières entrées)
  */
+export const dynamic = "force-dynamic"; // désactive le cache Vercel sur cette route
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 

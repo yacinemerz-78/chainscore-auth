@@ -2,6 +2,8 @@
  * GET  /api/admin/users        — liste des utilisateurs avec abonnement
  * POST /api/admin/users        — actions de support (patch abonnement, reset passkeys, delete)
  */
+export const dynamic = "force-dynamic"; // désactive le cache Vercel sur cette route
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity";
@@ -39,24 +41,51 @@ export async function GET(request: NextRequest) {
 
   const service = await createServiceClient();
 
-  let query = service
+  // ── 1. Récupérer les profils (sans jointure) ──────────────────────────────
+  // La jointure inline `subscriptions(…)` peut silencieusement retourner 0
+  // résultats si PostgREST n'a pas détecté la relation (FK pas encore reconnue).
+  // On fait deux requêtes séparées pour garantir que les profils sont toujours
+  // remontés, même sans abonnement associé.
+  let profilesQuery = service
     .from("profiles")
-    .select(`
-      id, email, full_name, role, created_at,
-      subscriptions ( status, trial_end, current_period_end, stripe_customer_id )
-    `, { count: "exact" })
-    .neq("role", "admin")  // affiche tous les non-admins, même ceux sans abonnement
+    .select("id, email, full_name, role, created_at", { count: "exact" })
+    .neq("role", "admin")
     .order("created_at", { ascending: false })
     .range(from, from + limit - 1);
 
   if (search) {
-    query = query.ilike("email", `%${search}%`);
+    profilesQuery = profilesQuery.ilike("email", `%${search}%`);
   }
 
-  const { data, count, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data: profiles, count, error } = await profilesQuery;
+  if (error) {
+    console.error("[admin/users] erreur requête profiles :", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  return NextResponse.json({ users: data ?? [], total: count ?? 0, page, limit });
+  if (!profiles || profiles.length === 0) {
+    return NextResponse.json({ users: [], total: count ?? 0, page, limit });
+  }
+
+  // ── 2. Récupérer les abonnements pour ces profils ─────────────────────────
+  const userIds = profiles.map((p) => p.id);
+  const { data: subscriptions } = await service
+    .from("subscriptions")
+    .select("user_id, status, trial_end, current_period_end, stripe_customer_id")
+    .in("user_id", userIds);
+
+  // Index par user_id pour lookup O(1)
+  const subByUserId = Object.fromEntries(
+    (subscriptions ?? []).map((s) => [s.user_id, s])
+  );
+
+  // ── 3. Assembler la réponse ───────────────────────────────────────────────
+  const users = profiles.map((p) => ({
+    ...p,
+    subscriptions: subByUserId[p.id] ? [subByUserId[p.id]] : [],
+  }));
+
+  return NextResponse.json({ users, total: count ?? 0, page, limit });
 }
 
 // ── POST — actions de support ─────────────────────────────────────────────────
