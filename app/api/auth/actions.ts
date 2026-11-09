@@ -44,7 +44,8 @@ async function hasActiveSubscription(userId: string): Promise<boolean> {
 /** Détermine où rediriger après connexion selon le rôle et le statut d'abonnement */
 async function getPostLoginRedirect(userId: string, email: string): Promise<string> {
   // 1. Admin → /admin (double vérification email + rôle DB)
-  if (email === ADMIN_EMAIL) {
+  //    Court-circuit : l'admin ne passe pas par la vérification d'abonnement
+  if (ADMIN_EMAIL && email === ADMIN_EMAIL) {
     const supabase = await createClient();
     const { data } = await supabase
       .from("profiles")
@@ -52,6 +53,9 @@ async function getPostLoginRedirect(userId: string, email: string): Promise<stri
       .eq("id", userId)
       .single();
     if (data?.role === "admin") return "/admin";
+    // Email admin mais rôle non confirmé en DB → quand même admin dashboard
+    // (évite de bloquer l'admin dans le tunnel checkout)
+    return "/admin";
   }
 
   // 2. Utilisateur avec abonnement actif/essai → app principale

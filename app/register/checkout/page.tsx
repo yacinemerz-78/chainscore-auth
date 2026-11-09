@@ -30,7 +30,15 @@ export default function CheckoutPage() {
 
     try {
       const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const data = await res.json();
+
+      // Lire le texte brut d'abord pour éviter "Unexpected end of JSON input"
+      const text = await res.text();
+      let data: { url?: string; error?: string } = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error("Réponse invalide du serveur. Réessaie dans quelques secondes.");
+      }
 
       if (!res.ok || !data.url) {
         throw new Error(data.error ?? "Impossible de démarrer le paiement");

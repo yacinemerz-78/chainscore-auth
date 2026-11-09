@@ -43,7 +43,10 @@ test("POST /api/stripe/checkout retourne JSON valide (401 si non connecté)", as
   // Non connecté → 401
   expect(res.status()).toBe(401);
 
-  const body = await res.json();
+  // La réponse ne doit JAMAIS être vide (protection contre "Unexpected end of JSON input")
+  const text = await res.text();
+  expect(text.trim().length).toBeGreaterThan(0);
+  const body = JSON.parse(text);
   expect(body).toHaveProperty("error");
   console.log("✅ /api/stripe/checkout →", res.status(), body);
 });

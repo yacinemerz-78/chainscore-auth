@@ -42,14 +42,16 @@ export async function GET(request: Request) {
       });
 
       // 1. Routage admin (double vérification)
-      if (user.email === ADMIN_EMAIL) {
+      //    Court-circuit : l'admin ne passe pas par la vérification d'abonnement
+      if (ADMIN_EMAIL && user.email === ADMIN_EMAIL) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .single() as { data: { role: string } | null; error: unknown };
 
-        if (profile?.role === "admin") {
+        // Redirige vers /admin que le rôle soit confirmé ou non (évite le tunnel checkout)
+        if (!profile || profile.role === "admin") {
           return NextResponse.redirect(`${origin}/admin`);
         }
       }
