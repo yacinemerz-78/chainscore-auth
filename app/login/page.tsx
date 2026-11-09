@@ -50,7 +50,16 @@ function LoginPageClient() {
     if (remember) formData.set("remember", "on");
     startTransition(async () => {
       const result = await signIn(formData);
-      if (result?.error) setError(result.error);
+      if (!result) return;
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      // Server Action retourne { redirect: dest } — on navigue côté client
+      // (redirect() dans une SA appelée via startTransition lève NEXT_REDIRECT
+      //  qui est silencieusement avalé par React → pas de navigation)
+      setSuccessMsg("Connexion réussie ! Redirection...");
+      window.location.href = result.redirect;
     });
   };
 

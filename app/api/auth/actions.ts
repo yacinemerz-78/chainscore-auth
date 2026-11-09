@@ -102,16 +102,27 @@ async function getPostLoginRedirect(userId: string, email: string): Promise<stri
 }
 
 // ── Connexion email/password ───────────────────────────────────────────────────
-export async function signIn(formData: FormData) {
+// Retourne { redirect: string } au lieu d'appeler redirect() directement.
+// Raison : redirect() dans une Server Action appelée via startTransition depuis
+// un Client Component lève NEXT_REDIRECT qui est silencieusement avalé par React —
+// la navigation n'a jamais lieu. Le client doit naviguer lui-même via router.push().
+export async function signIn(formData: FormData): Promise<{ error: string } | { redirect: string }> {
   const supabase = await createClient();
   const email    = formData.get("email") as string;
   const password = formData.get("password") as string;
 
   if (!email || !password) return { error: "Email et mot de passe requis." };
 
+  console.log(`[auth/actions] signIn appelé pour "${email}"`);
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (error) return { error: translateAuthError(error.message) };
+  if (error) {
+    console.warn(`[auth/actions] signInWithPassword échoué : ${error.message}`);
+    return { error: translateAuthError(error.message) };
+  }
+
+  console.log(`[auth/actions] signInWithPassword OK — user.id=${data.user.id}`);
 
   await logActivity({
     event_type: "login",
@@ -122,7 +133,9 @@ export async function signIn(formData: FormData) {
 
   revalidatePath("/", "layout");
   const dest = await getPostLoginRedirect(data.user.id, data.user.email ?? "");
-  redirect(dest);
+  console.log(`[auth/actions] redirection calculée → "${dest}"`);
+  // On retourne l'URL — le client appellera router.push(dest) ou window.location.href
+  return { redirect: dest };
 }
 
 // ── Inscription ────────────────────────────────────────────────────────────────
