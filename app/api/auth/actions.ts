@@ -185,6 +185,26 @@ export async function signUp(formData: FormData) {
       // Non bloquant : le trigger a peut-être déjà inséré la ligne
       console.warn("[auth/actions] upsert profiles fallback échoué :", err);
     }
+
+    // Crée automatiquement un essai gratuit de 30 jours pour tout nouvel utilisateur.
+    // ignoreDuplicates: true → no-op si une ligne existe déjà (re-inscription même email,
+    // webhook Stripe qui aurait déjà tourné, etc.). Ne remplace jamais un abonnement actif.
+    try {
+      const service = await createServiceClient();
+      const trialEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await service.from("subscriptions").upsert(
+        {
+          user_id:   data.user.id,
+          status:    "trialing",
+          trial_end: trialEnd,
+        },
+        { onConflict: "user_id", ignoreDuplicates: true }
+      );
+      console.log(`[auth/actions] ✅ Essai gratuit créé jusqu'au ${trialEnd} pour ${data.user.email}`);
+    } catch (err) {
+      // Non bloquant : l'essai peut déjà exister ou la table peut être indisponible
+      console.warn("[auth/actions] upsert subscriptions (trial) échoué :", err);
+    }
   }
 
   if (data.session) {

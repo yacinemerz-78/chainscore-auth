@@ -130,6 +130,46 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // ── Vérification essai / abonnement ──────────────────────────────────────
+  // On ne vérifie pas pour /register/* (checkout, confirmation…) pour éviter
+  // une boucle de redirection infinie.
+  const isRegisterPath = pathname.startsWith("/register");
+  if (!isRegisterPath && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const serviceSupabase = createServerClient<any>(  // eslint-disable-line @typescript-eslint/no-explicit-any
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+          cookies: {
+            getAll() { return []; },
+            setAll() {},
+          },
+        }
+      );
+
+      const { data: sub } = await serviceSupabase
+        .from("subscriptions")
+        .select("status, trial_end, current_period_end")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const now = Date.now();
+      const isActive   = sub?.status === "active";
+      const isTrialing = sub?.status === "trialing" && sub.trial_end && new Date(sub.trial_end).getTime() > now;
+      const hasAccess  = isActive || isTrialing;
+
+      if (!hasAccess) {
+        console.warn(`[middleware] ⛔ Accès bloqué — user=${user.email} status=${sub?.status ?? "none"} trial_end=${sub?.trial_end ?? "null"}`);
+        const url = request.nextUrl.clone();
+        url.pathname = "/register/checkout";
+        return NextResponse.redirect(url);
+      }
+    } catch (err) {
+      // En cas d'erreur DB, on laisse passer plutôt que de bloquer à tort.
+      console.error("[middleware] Erreur vérification abonnement :", err);
+    }
+  }
+
   return supabaseResponse;
 }
 
