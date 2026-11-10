@@ -143,11 +143,11 @@ function Step2() {
     const step = () => {
       setScore((s) => {
         if (s >= target) return target;
-        frame = setTimeout(step, 28);
+        frame = setTimeout(step, 50);
         return s + 1;
       });
     };
-    const timer = setTimeout(step, 500);
+    const timer = setTimeout(step, 800);
     return () => { clearTimeout(timer); clearTimeout(frame); };
   }, []);
 
@@ -224,10 +224,10 @@ function Step2() {
 function Step3() {
   const lines = [
     { delay: 0,    text: "🌅 Bonjour ! Voici votre briefing crypto du matin." },
-    { delay: 900,  text: "📊 Score de santé : 73/100 — Portefeuille en bonne forme." },
-    { delay: 1800, text: "💰 Valeur totale : 39 464 € (+4 724 € depuis l'achat)" },
-    { delay: 2700, text: "₿ Bitcoin : +18.2%  ·  Ξ Ethereum : -4.7%  ·  ◎ Solana : +16.7%" },
-    { delay: 3600, text: "✅ Rien d'urgent aujourd'hui. Bonne journée !" },
+    { delay: 1600, text: "📊 Score de santé : 73/100 — Portefeuille en bonne forme." },
+    { delay: 3200, text: "💰 Valeur totale : 39 464 € (+4 724 € depuis l'achat)" },
+    { delay: 4800, text: "₿ Bitcoin : +18.2%  ·  Ξ Ethereum : -4.7%  ·  ◎ Solana : +16.7%" },
+    { delay: 6400, text: "✅ Rien d'urgent aujourd'hui. Bonne journée !" },
   ];
 
   const [visible, setVisible] = useState<number[]>([]);
@@ -322,7 +322,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 7000);
+    }, 14000);
   }
 
   // Auto-play au montage
@@ -333,7 +333,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 7000);
+    }, 14000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -397,7 +397,7 @@ export default function Showreel() {
                         key={animKey}
                         className="h-full bg-gold rounded-full"
                         style={{
-                          animation: "showreel-progress 7s linear forwards",
+                          animation: "showreel-progress 14s linear forwards",
                         }}
                       />
                     </div>
