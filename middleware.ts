@@ -62,7 +62,11 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Routes publiques — laisser passer
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // Note : "/" est vérifié en comparaison exacte pour éviter que startsWith("/")
+  // ne matche TOUTES les routes et bypasse la protection complète.
+  const isPublic =
+    pathname === "/" ||
+    PUBLIC_PATHS.filter((p) => p !== "/").some((p) => pathname.startsWith(p));
   if (isPublic) return supabaseResponse;
 
   // ── Protection /admin ────────────────────────────────────────────────────
