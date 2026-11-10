@@ -10,6 +10,7 @@
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import AdminDashboard from "@/components/admin/AdminDashboard";
+import TelegramLinkCard from "@/components/dashboard/TelegramLinkCard";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "";
 
@@ -32,7 +33,20 @@ export default async function AdminPage() {
   // si le rôle n'a pas encore été mis à jour en base.
   if (adminEmailTrimmed && userEmailTrimmed === adminEmailTrimmed) {
     console.log(`[admin/page] ✅ Bypass ADMIN_EMAIL — accès accordé pour ${user.email}`);
-    return <AdminDashboard adminEmail={user.email!} adminName={null} />;
+    const service = await createServiceClient();
+    const { data: adminProfile } = await service
+      .from("profiles")
+      .select("telegram_linked_at")
+      .eq("id", user.id)
+      .single();
+    return (
+      <>
+        <div className="max-w-2xl mx-auto px-4 pt-6">
+          <TelegramLinkCard telegramLinkedAt={adminProfile?.telegram_linked_at ?? null} />
+        </div>
+        <AdminDashboard adminEmail={user.email!} adminName={null} />
+      </>
+    );
   }
 
   // ── Niveau 2 : vérification rôle DB ───────────────────────────────────────
@@ -55,5 +69,12 @@ export default async function AdminPage() {
   }
 
   console.log(`[admin/page] ✅ Accès accordé via rôle DB — user=${user.email}`);
-  return <AdminDashboard adminEmail={profile.email} adminName={null} />;
+  return (
+    <>
+      <div className="max-w-2xl mx-auto px-4 pt-6">
+        <TelegramLinkCard telegramLinkedAt={null} />
+      </div>
+      <AdminDashboard adminEmail={profile.email} adminName={null} />
+    </>
+  );
 }
