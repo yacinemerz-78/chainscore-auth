@@ -263,6 +263,75 @@ export default async function LandingPage() {
           </div>
         </section>
 
+        {/* ── FAQ ──────────────────────────────────────────────────────── */}
+        <section className="max-w-3xl mx-auto px-4 sm:px-6 py-20 border-t border-line">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-ink-white">
+              Questions fréquentes
+            </h2>
+            <p className="mt-3 text-ink">
+              Tout ce que vous voulez savoir avant de commencer.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                q: "Dois-je connecter mon exchange ou mon wallet ?",
+                a: "Non, jamais. Vous saisissez uniquement vos cryptos, quantités et prix d'achat manuellement. MyChainScore ne touche pas à vos fonds et n'a aucun accès à vos comptes.",
+              },
+              {
+                q: "Quelles cryptomonnaies sont supportées ?",
+                a: "Les principales cryptos du marché sont prises en charge : Bitcoin (BTC), Ethereum (ETH), Solana (SOL), et bien d'autres. La liste s'élargit régulièrement.",
+              },
+              {
+                q: "Comment fonctionne le score de santé ?",
+                a: "Le score (de 0 à 100) synthétise l'état de votre portefeuille : diversification, performances globales et exposition au risque. Pas de jargon technique — juste un indicateur clair pour savoir si votre portefeuille est en bonne forme.",
+              },
+              {
+                q: "Le briefing Telegram est-il vraiment automatique ?",
+                a: "Oui. Chaque matin à 8h00, notre bot Telegram vous envoie un résumé personnalisé de vos positions sans aucune action de votre part. Vous avez votre rapport avant même d'ouvrir votre ordinateur.",
+              },
+              {
+                q: "Est-ce que mes données sont en sécurité ?",
+                a: "Vos données sont hébergées en Europe et chiffrées. Comme nous n'avons accès à aucun exchange ni wallet, votre argent reste inaccessible depuis notre plateforme, quoi qu'il arrive.",
+              },
+              {
+                q: "Combien ça coûte après l'essai gratuit ?",
+                a: "2 € par mois seulement, sans engagement. L'essai dure 30 jours et ne nécessite aucune carte bancaire. Vous décidez en connaissance de cause.",
+              },
+              {
+                q: "Je suis débutant en crypto — c'est fait pour moi ?",
+                a: "C'est exactement pour vous. MyChainScore est conçu pour les investisseurs qui veulent suivre leur portefeuille sans passer des heures sur des graphiques complexes. Pas de trading, pas de levier, pas de jargon.",
+              },
+            ].map(({ q, a }, i) => (
+              <details
+                key={i}
+                className="group bg-panel border border-line rounded-2xl overflow-hidden"
+              >
+                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none select-none hover:bg-panel-2 transition-colors duration-200">
+                  <span className="font-semibold text-sm text-ink-white">{q}</span>
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full border border-line flex items-center justify-center text-ink group-open:rotate-45 transition-transform duration-300 text-xs">
+                    +
+                  </span>
+                </summary>
+                <div className="px-6 pb-5 pt-1">
+                  <p className="text-sm text-ink leading-relaxed">{a}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <p className="text-sm text-ink">
+              Une autre question ?{" "}
+              <Link href="/login" className="text-gold hover:underline">
+                Contactez-nous
+              </Link>
+            </p>
+          </div>
+        </section>
+
       </main>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}

@@ -143,11 +143,11 @@ function Step2() {
     const step = () => {
       setScore((s) => {
         if (s >= target) return target;
-        frame = setTimeout(step, 18);
+        frame = setTimeout(step, 28);
         return s + 1;
       });
     };
-    const timer = setTimeout(step, 300);
+    const timer = setTimeout(step, 500);
     return () => { clearTimeout(timer); clearTimeout(frame); };
   }, []);
 
@@ -224,10 +224,10 @@ function Step2() {
 function Step3() {
   const lines = [
     { delay: 0,    text: "🌅 Bonjour ! Voici votre briefing crypto du matin." },
-    { delay: 600,  text: "📊 Score de santé : 73/100 — Portefeuille en bonne forme." },
-    { delay: 1200, text: "💰 Valeur totale : 39 464 € (+4 724 € depuis l'achat)" },
-    { delay: 1800, text: "₿ Bitcoin : +18.2%  ·  Ξ Ethereum : -4.7%  ·  ◎ Solana : +16.7%" },
-    { delay: 2400, text: "✅ Rien d'urgent aujourd'hui. Bonne journée !" },
+    { delay: 900,  text: "📊 Score de santé : 73/100 — Portefeuille en bonne forme." },
+    { delay: 1800, text: "💰 Valeur totale : 39 464 € (+4 724 € depuis l'achat)" },
+    { delay: 2700, text: "₿ Bitcoin : +18.2%  ·  Ξ Ethereum : -4.7%  ·  ◎ Solana : +16.7%" },
+    { delay: 3600, text: "✅ Rien d'urgent aujourd'hui. Bonne journée !" },
   ];
 
   const [visible, setVisible] = useState<number[]>([]);
@@ -262,7 +262,7 @@ function Step3() {
           {lines.map((l, i) => (
             <div
               key={i}
-              className="transition-all duration-500"
+              className="transition-all duration-700"
               style={{
                 opacity:   visible.includes(i) ? 1 : 0,
                 transform: visible.includes(i) ? "translateY(0)" : "translateY(8px)",
@@ -322,7 +322,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 5000);
+    }, 7000);
   }
 
   // Auto-play au montage
@@ -333,7 +333,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 5000);
+    }, 7000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -397,7 +397,7 @@ export default function Showreel() {
                         key={animKey}
                         className="h-full bg-gold rounded-full"
                         style={{
-                          animation: "showreel-progress 5s linear forwards",
+                          animation: "showreel-progress 7s linear forwards",
                         }}
                       />
                     </div>
