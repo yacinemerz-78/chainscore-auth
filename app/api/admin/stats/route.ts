@@ -70,13 +70,6 @@ export async function GET() {
     active:       resActive.count   ?? 0,
     canceled:     resCanceled.count ?? 0,
     mrr_estimate: (resActive.count ?? 0) * 2,
-    // Diagnostic temporaire — à retirer après correction
-    _debug: {
-      users_error:    resUsers.error?.message    ?? null,
-      trialing_error: resTrialing.error?.message ?? null,
-      trialing_count: resTrialing.count,
-      active_error:   resActive.error?.message   ?? null,
-    },
   };
 
   return NextResponse.json(stats);
