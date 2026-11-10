@@ -322,7 +322,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 20000);
+    }, 18000);
   }
 
   // Auto-play au montage
@@ -333,7 +333,7 @@ export default function Showreel() {
         setAnimKey((k) => k + 1);
         return next;
       });
-    }, 20000);
+    }, 18000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
@@ -397,7 +397,7 @@ export default function Showreel() {
                         key={animKey}
                         className="h-full bg-gold rounded-full"
                         style={{
-                          animation: "showreel-progress 20s linear forwards",
+                          animation: "showreel-progress 18s linear forwards",
                         }}
                       />
                     </div>
