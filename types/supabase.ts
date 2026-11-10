@@ -19,6 +19,10 @@ export interface Database {
           email: string;
           full_name: string | null;
           role: UserRole;
+          telegram_chat_id: string | null;
+          telegram_linked_at: string | null;
+          telegram_link_token: string | null;
+          telegram_token_expires: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -27,6 +31,10 @@ export interface Database {
           email: string;
           full_name?: string | null;
           role?: UserRole;
+          telegram_chat_id?: string | null;
+          telegram_linked_at?: string | null;
+          telegram_link_token?: string | null;
+          telegram_token_expires?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -34,6 +42,41 @@ export interface Database {
           email?: string;
           full_name?: string | null;
           role?: UserRole;
+          telegram_chat_id?: string | null;
+          telegram_linked_at?: string | null;
+          telegram_link_token?: string | null;
+          telegram_token_expires?: string | null;
+          updated_at?: string;
+        };
+      };
+      portfolios: {
+        Row: {
+          id: string;
+          user_id: string;
+          coin_id: string;
+          coin_symbol: string;
+          coin_name: string;
+          qty: number;
+          invested_eur: number;
+          added_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          coin_id: string;
+          coin_symbol: string;
+          coin_name: string;
+          qty: number;
+          invested_eur: number;
+          added_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          coin_symbol?: string;
+          coin_name?: string;
+          qty?: number;
+          invested_eur?: number;
           updated_at?: string;
         };
       };
@@ -181,3 +224,4 @@ export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
 export type WebAuthnCredential = Database["public"]["Tables"]["webauthn_credentials"]["Row"];
 export type ActivityLog = Database["public"]["Tables"]["activity_log"]["Row"];
+export type PortfolioPosition = Database["public"]["Tables"]["portfolios"]["Row"];
