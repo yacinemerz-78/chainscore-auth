@@ -22,6 +22,7 @@ if (!ADMIN_EMAIL) {
 
 // Routes toujours accessibles sans auth
 const PUBLIC_PATHS = [
+  "/",           // landing page publique
   "/login",
   "/register",
   "/auth/callback",
