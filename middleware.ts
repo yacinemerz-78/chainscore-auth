@@ -28,7 +28,9 @@ const PUBLIC_PATHS = [
   "/auth/callback",
   "/api/webauthn",
   "/api/auth",
-  "/api/stripe/webhook", // le webhook Stripe n'est pas authentifié (signature HMAC)
+  "/api/stripe/webhook",   // webhook Stripe — signature HMAC propre
+  "/api/telegram/webhook", // webhook Telegram — vérifié par X-Telegram-Bot-Api-Secret-Token
+  "/api/cron",             // crons Vercel — vérifiés par Authorization: Bearer CRON_SECRET
   "/_next",
   "/favicon",
 ];

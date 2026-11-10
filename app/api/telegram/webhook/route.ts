@@ -22,9 +22,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
-const BOT_TOKEN      = process.env.TELEGRAM_BOT_TOKEN ?? "";
-
 // Telegram attend toujours un 200 — même en cas d'erreur métier.
 // On logue et on renvoie 200 pour éviter les relivraisons en boucle.
 function ok(msg?: string) {
@@ -32,6 +29,12 @@ function ok(msg?: string) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Lecture des env vars à l'exécution (pas au build) ──────────────────────
+  // Les constantes module-level sont figées au build dans le serverless runtime.
+  // On les lit ici pour capturer les valeurs réelles en production.
+  const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
+  const BOT_TOKEN      = process.env.TELEGRAM_BOT_TOKEN ?? "";
+
   // ── 1. Vérification du secret Telegram ────────────────────────────────────
   if (!WEBHOOK_SECRET) {
     console.error("[telegram/webhook] TELEGRAM_WEBHOOK_SECRET manquant");
@@ -40,6 +43,9 @@ export async function POST(req: NextRequest) {
 
   const incomingSecret = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
   if (incomingSecret !== WEBHOOK_SECRET) {
+    console.error(
+      `[telegram/webhook] Secret invalide — reçu: "${incomingSecret.slice(0, 6)}…" attendu: "${WEBHOOK_SECRET.slice(0, 6)}…"`
+    );
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -63,6 +69,7 @@ export async function POST(req: NextRequest) {
   if (!text.startsWith("/start ")) {
     // Commande inconnue — on peut répondre poliment
     await sendTelegramMessage(
+      BOT_TOKEN,
       chatId,
       "👋 Ce bot envoie votre bilan crypto quotidien.\n\nPour le lier à votre compte, utilisez le bouton « Lier Telegram » depuis votre tableau de bord MyChainScore."
     );
@@ -73,6 +80,7 @@ export async function POST(req: NextRequest) {
 
   if (!token || token.length !== 64) {
     await sendTelegramMessage(
+      BOT_TOKEN,
       chatId,
       "❌ Lien invalide. Générez un nouveau lien depuis votre tableau de bord MyChainScore."
     );
@@ -94,12 +102,13 @@ export async function POST(req: NextRequest) {
 
   if (fetchError) {
     console.error("[telegram/webhook] Erreur DB lookup :", fetchError.message);
-    await sendTelegramMessage(chatId, "❌ Erreur interne. Réessayez dans quelques instants.");
+    await sendTelegramMessage(BOT_TOKEN, chatId, "❌ Erreur interne. Réessayez dans quelques instants.");
     return ok("erreur DB");
   }
 
   if (!profile) {
     await sendTelegramMessage(
+      BOT_TOKEN,
       chatId,
       "❌ Ce lien est expiré ou déjà utilisé.\n\nGénérez un nouveau lien depuis votre tableau de bord MyChainScore."
     );
@@ -119,13 +128,14 @@ export async function POST(req: NextRequest) {
 
   if (updateError) {
     console.error("[telegram/webhook] Erreur mise à jour profil :", updateError.message);
-    await sendTelegramMessage(chatId, "❌ Erreur lors de la liaison. Réessayez.");
+    await sendTelegramMessage(BOT_TOKEN, chatId, "❌ Erreur lors de la liaison. Réessayez.");
     return ok("erreur update");
   }
 
   // ── 6. Message de confirmation ────────────────────────────────────────────
   const firstName = message.from?.first_name ?? "vous";
   await sendTelegramMessage(
+    BOT_TOKEN,
     chatId,
     `✅ *Telegram lié avec succès !*\n\n` +
     `Bonjour ${firstName} ! Votre compte MyChainScore est maintenant connecté.\n\n` +
@@ -139,13 +149,13 @@ export async function POST(req: NextRequest) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
-  if (!BOT_TOKEN) {
+async function sendTelegramMessage(botToken: string, chatId: string, text: string): Promise<void> {
+  if (!botToken) {
     console.error("[telegram/webhook] TELEGRAM_BOT_TOKEN manquant");
     return;
   }
   try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
