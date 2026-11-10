@@ -35,10 +35,10 @@ export async function GET() {
   const service = await createServiceClient();
 
   const [
-    { count: total_users },
-    { count: trialing },
-    { count: active },
-    { count: canceled },
+    resUsers,
+    resTrialing,
+    resActive,
+    resCanceled,
   ] = await Promise.all([
     service
       .from("profiles")
@@ -58,12 +58,25 @@ export async function GET() {
       .eq("status", "canceled"),
   ]);
 
+  // Log des erreurs éventuelles pour diagnostic
+  if (resUsers.error)    console.error("[stats] profiles error:", resUsers.error.message);
+  if (resTrialing.error) console.error("[stats] trialing error:", resTrialing.error.message);
+  if (resActive.error)   console.error("[stats] active error:", resActive.error.message);
+  if (resCanceled.error) console.error("[stats] canceled error:", resCanceled.error.message);
+
   const stats = {
-    total_users:  total_users  ?? 0,
-    trialing:     trialing     ?? 0,
-    active:       active       ?? 0,
-    canceled:     canceled     ?? 0,
-    mrr_estimate: (active ?? 0) * 2,   // même formule que la RPC SQL
+    total_users:  resUsers.count    ?? 0,
+    trialing:     resTrialing.count ?? 0,
+    active:       resActive.count   ?? 0,
+    canceled:     resCanceled.count ?? 0,
+    mrr_estimate: (resActive.count ?? 0) * 2,
+    // Diagnostic temporaire — à retirer après correction
+    _debug: {
+      users_error:    resUsers.error?.message    ?? null,
+      trialing_error: resTrialing.error?.message ?? null,
+      trialing_count: resTrialing.count,
+      active_error:   resActive.error?.message   ?? null,
+    },
   };
 
   return NextResponse.json(stats);
