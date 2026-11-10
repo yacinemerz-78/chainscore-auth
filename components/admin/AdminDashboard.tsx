@@ -182,6 +182,20 @@ export default function AdminDashboard({ adminEmail, adminName }: AdminDashboard
       display: "flex",
       flexDirection: "column",
     }}>
+      {/* Styles responsive injectés — tableau masqué sur mobile, cartes masquées sur desktop */}
+      <style>{`
+        .admin-table-wrap { display: none; }
+        .admin-cards-wrap { display: flex; flex-direction: column; gap: 12px; }
+        @media (min-width: 768px) {
+          .admin-table-wrap { display: block; }
+          .admin-cards-wrap { display: none; }
+        }
+        .admin-header-search { flex-direction: column; align-items: flex-start !important; gap: 10px !important; }
+        @media (min-width: 480px) {
+          .admin-header-search { flex-direction: row !important; align-items: center !important; }
+        }
+        .user-action-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+      `}</style>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={{
@@ -276,7 +290,7 @@ export default function AdminDashboard({ adminEmail, adminName }: AdminDashboard
       )}
 
       {/* ── Content ────────────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, padding: "28px 24px", maxWidth: 1200, width: "100%", margin: "0 auto" }}>
+      <main style={{ flex: 1, padding: "20px 16px", maxWidth: 1200, width: "100%", margin: "0 auto" }}>
 
         {/* ════ TAB : VUE D'ENSEMBLE ════════════════════════════════════════ */}
         {tab === "overview" && (
@@ -345,7 +359,7 @@ export default function AdminDashboard({ adminEmail, adminName }: AdminDashboard
         {/* ════ TAB : UTILISATEURS ═════════════════════════════════════════ */}
         {tab === "users" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+            <div className="admin-header-search" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
                 Utilisateurs <span style={{ fontSize: 14, fontWeight: 400, color: "#8b95a8" }}>({total})</span>
               </h1>
@@ -376,151 +390,147 @@ export default function AdminDashboard({ adminEmail, adminName }: AdminDashboard
               </div>
             </div>
 
-            {/* Table */}
-            <div style={{
-              background: "#161b26", border: "1px solid #2a3347", borderRadius: 16, overflow: "hidden",
-            }}>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #2a3347" }}>
-                      {["Email", "Nom", "Statut", "Inscrit le", "Actions"].map((h) => (
-                        <th key={h} style={{
-                          padding: "12px 16px", textAlign: "left",
-                          fontSize: 11, fontWeight: 600, letterSpacing: ".06em",
-                          textTransform: "uppercase", color: "#8b95a8",
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#8b95a8" }}>
-                          Chargement…
-                        </td>
-                      </tr>
-                    ) : users.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#8b95a8" }}>
-                          {search ? "Aucun résultat pour cette recherche." : "Aucun utilisateur."}
-                        </td>
-                      </tr>
-                    ) : (
-                      users.map((u, i) => {
-                        const badge = statusBadge(u.subscriptions);
-                        const busy  = actionId === u.id;
-                        return (
-                          <tr key={u.id} style={{
-                            borderBottom: i < users.length - 1 ? "1px solid #1e2535" : "none",
-                            transition: "background .1s",
-                          }}>
-                            <td style={{ padding: "12px 16px", color: "#e8ecf2", maxWidth: 220 }}>
-                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {u.email}
-                              </span>
-                            </td>
-                            <td style={{ padding: "12px 16px", color: "#a8b2c0" }}>
-                              {u.full_name ?? <span style={{ color: "#6b7280" }}>—</span>}
-                            </td>
-                            <td style={{ padding: "12px 16px" }}>
-                              <span style={{
-                                fontSize: 11, fontWeight: 600,
-                                color: badge.color, background: badge.bg,
-                                borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap",
-                              }}>{badge.label}</span>
-                            </td>
-                            <td style={{ padding: "12px 16px", color: "#8b95a8", whiteSpace: "nowrap" }}>
-                              {fmtDate(u.created_at)}
-                            </td>
-                            <td style={{ padding: "12px 16px" }}>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                {/* Activer */}
-                                <ActionBtn
-                                  icon={<CheckCircle2 size={11} />}
-                                  label="Activer"
-                                  color="#22c55e"
-                                  disabled={busy}
-                                  onClick={() => doAction("set_subscription", u.id, { status: "active" })}
-                                  title="Activer l'abonnement"
-                                />
-                                {/* Essai +7j */}
-                                <ActionBtn
-                                  icon={<Gift size={11} />}
-                                  label="+7j"
-                                  color="#f5a623"
-                                  disabled={busy}
-                                  onClick={() => doAction("extend_trial", u.id, { days: 7 })}
-                                  title="Prolonger l'essai de 7 jours"
-                                />
-                                {/* Désactiver */}
-                                <ActionBtn
-                                  icon={<XCircle size={11} />}
-                                  label="Annuler"
-                                  color="#ef4444"
-                                  disabled={busy}
-                                  onClick={() => doAction("set_subscription", u.id, { status: "canceled" })}
-                                  title="Annuler l'abonnement"
-                                />
-                                {/* Reset passkeys */}
-                                <ActionBtn
-                                  icon={<Fingerprint size={11} />}
-                                  label="Passkeys"
-                                  color="#a78bfa"
-                                  disabled={busy}
-                                  onClick={() => doAction("reset_passkeys", u.id, undefined,
-                                    `Réinitialiser les passkeys de ${u.email} ?`)}
-                                  title="Supprimer les passkeys (bug d'accès)"
-                                />
-                                {/* Force logout */}
-                                <ActionBtn
-                                  icon={<LogOut size={11} />}
-                                  label="Déco."
-                                  color="#f59e0b"
-                                  disabled={busy}
-                                  onClick={() => doAction("force_signout", u.id, undefined,
-                                    `Forcer la déconnexion de ${u.email} ?`)}
-                                  title="Forcer la déconnexion"
-                                />
-                                {/* Supprimer */}
-                                <ActionBtn
-                                  icon={<Trash2 size={11} />}
-                                  label="Suppr."
-                                  color="#ef4444"
-                                  disabled={busy}
-                                  onClick={() => doAction("delete_user", u.id, undefined,
-                                    `⚠️ Supprimer définitivement le compte de ${u.email} ?\nCette action est irréversible.`)}
-                                  title="Supprimer le compte"
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+            {/* Contenu — tableau desktop / cartes mobile */}
+            {loading ? (
+              <div style={{ background: "#161b26", border: "1px solid #2a3347", borderRadius: 16, padding: 40, textAlign: "center", color: "#8b95a8" }}>
+                Chargement…
               </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div style={{
-                  borderTop: "1px solid #2a3347", padding: "12px 16px",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  fontSize: 13, color: "#8b95a8",
+            ) : users.length === 0 ? (
+              <div style={{ background: "#161b26", border: "1px solid #2a3347", borderRadius: 16, padding: 40, textAlign: "center", color: "#8b95a8" }}>
+                {search ? "Aucun résultat pour cette recherche." : "Aucun utilisateur."}
+              </div>
+            ) : (
+              <>
+                {/* ── TABLEAU (≥ 768px) ─────────────────────────────────────── */}
+                <div className="admin-table-wrap" style={{
+                  background: "#161b26", border: "1px solid #2a3347", borderRadius: 16, overflow: "hidden",
                 }}>
-                  <span>Page {page} / {totalPages}</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <PagBtn disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                      <ChevronLeft size={14} />
-                    </PagBtn>
-                    <PagBtn disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-                      <ChevronRight size={14} />
-                    </PagBtn>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #2a3347" }}>
+                          {["Email", "Nom", "Statut", "Inscrit le", "Actions"].map((h) => (
+                            <th key={h} style={{
+                              padding: "12px 16px", textAlign: "left",
+                              fontSize: 11, fontWeight: 600, letterSpacing: ".06em",
+                              textTransform: "uppercase", color: "#8b95a8",
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map((u, i) => {
+                          const badge = statusBadge(u.subscriptions);
+                          const busy  = actionId === u.id;
+                          return (
+                            <tr key={u.id} style={{
+                              borderBottom: i < users.length - 1 ? "1px solid #1e2535" : "none",
+                            }}>
+                              <td style={{ padding: "12px 16px", color: "#e8ecf2", maxWidth: 220 }}>
+                                <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {u.email}
+                                </span>
+                              </td>
+                              <td style={{ padding: "12px 16px", color: "#a8b2c0" }}>
+                                {u.full_name ?? <span style={{ color: "#6b7280" }}>—</span>}
+                              </td>
+                              <td style={{ padding: "12px 16px" }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 600,
+                                  color: badge.color, background: badge.bg,
+                                  borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap",
+                                }}>{badge.label}</span>
+                              </td>
+                              <td style={{ padding: "12px 16px", color: "#8b95a8", whiteSpace: "nowrap" }}>
+                                {fmtDate(u.created_at)}
+                              </td>
+                              <td style={{ padding: "12px 16px" }}>
+                                <div className="user-action-btns">
+                                  <ActionBtn icon={<CheckCircle2 size={11} />} label="Activer"  color="#22c55e" disabled={busy} onClick={() => doAction("set_subscription", u.id, { status: "active" })}   title="Activer l'abonnement" />
+                                  <ActionBtn icon={<Gift size={11} />}         label="+7j"      color="#f5a623" disabled={busy} onClick={() => doAction("extend_trial", u.id, { days: 7 })}                title="Prolonger l'essai de 7 jours" />
+                                  <ActionBtn icon={<XCircle size={11} />}      label="Annuler"  color="#ef4444" disabled={busy} onClick={() => doAction("set_subscription", u.id, { status: "canceled" })} title="Annuler l'abonnement" />
+                                  <ActionBtn icon={<Fingerprint size={11} />}  label="Passkeys" color="#a78bfa" disabled={busy} onClick={() => doAction("reset_passkeys",   u.id, undefined, `Réinitialiser les passkeys de ${u.email} ?`)}                        title="Supprimer les passkeys" />
+                                  <ActionBtn icon={<LogOut size={11} />}       label="Déco."    color="#f59e0b" disabled={busy} onClick={() => doAction("force_signout",    u.id, undefined, `Forcer la déconnexion de ${u.email} ?`)}                            title="Forcer la déconnexion" />
+                                  <ActionBtn icon={<Trash2 size={11} />}       label="Suppr."   color="#ef4444" disabled={busy} onClick={() => doAction("delete_user",      u.id, undefined, `⚠️ Supprimer définitivement le compte de ${u.email} ?\nCette action est irréversible.`)} title="Supprimer le compte" />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
+                  {/* Pagination tableau */}
+                  {totalPages > 1 && (
+                    <div style={{
+                      borderTop: "1px solid #2a3347", padding: "12px 16px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      fontSize: 13, color: "#8b95a8",
+                    }}>
+                      <span>Page {page} / {totalPages}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <PagBtn disabled={page <= 1}           onClick={() => setPage(page - 1)}><ChevronLeft  size={14} /></PagBtn>
+                        <PagBtn disabled={page >= totalPages}  onClick={() => setPage(page + 1)}><ChevronRight size={14} /></PagBtn>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+
+                {/* ── CARTES (< 768px) ──────────────────────────────────────── */}
+                <div className="admin-cards-wrap">
+                  {users.map((u) => {
+                    const badge = statusBadge(u.subscriptions);
+                    const busy  = actionId === u.id;
+                    return (
+                      <div key={u.id} style={{
+                        background: "#161b26", border: "1px solid #2a3347",
+                        borderRadius: 16, padding: 16,
+                      }}>
+                        {/* Email + statut */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+                          <span style={{
+                            fontSize: 13, fontWeight: 600, color: "#e8ecf2",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                          }}>{u.email}</span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 600, flexShrink: 0,
+                            color: badge.color, background: badge.bg,
+                            borderRadius: 999, padding: "3px 10px",
+                          }}>{badge.label}</span>
+                        </div>
+                        {/* Nom + date */}
+                        <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8b95a8", marginBottom: 14 }}>
+                          <span>{u.full_name ?? "—"}</span>
+                          <span style={{ marginLeft: "auto" }}>{fmtDate(u.created_at)}</span>
+                        </div>
+                        {/* Boutons */}
+                        <div className="user-action-btns">
+                          <ActionBtn icon={<CheckCircle2 size={11} />} label="Activer"  color="#22c55e" disabled={busy} onClick={() => doAction("set_subscription", u.id, { status: "active" })}   title="Activer l'abonnement" />
+                          <ActionBtn icon={<Gift size={11} />}         label="+7j"      color="#f5a623" disabled={busy} onClick={() => doAction("extend_trial", u.id, { days: 7 })}                title="Prolonger l'essai" />
+                          <ActionBtn icon={<XCircle size={11} />}      label="Annuler"  color="#ef4444" disabled={busy} onClick={() => doAction("set_subscription", u.id, { status: "canceled" })} title="Annuler l'abonnement" />
+                          <ActionBtn icon={<Fingerprint size={11} />}  label="Passkeys" color="#a78bfa" disabled={busy} onClick={() => doAction("reset_passkeys",   u.id, undefined, `Réinitialiser les passkeys de ${u.email} ?`)}                        title="Passkeys" />
+                          <ActionBtn icon={<LogOut size={11} />}       label="Déco."    color="#f59e0b" disabled={busy} onClick={() => doAction("force_signout",    u.id, undefined, `Forcer la déconnexion de ${u.email} ?`)}                            title="Déco." />
+                          <ActionBtn icon={<Trash2 size={11} />}       label="Suppr."   color="#ef4444" disabled={busy} onClick={() => doAction("delete_user",      u.id, undefined, `⚠️ Supprimer définitivement le compte de ${u.email} ?\nCette action est irréversible.`)} title="Supprimer" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Pagination cartes */}
+                  {totalPages > 1 && (
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      fontSize: 13, color: "#8b95a8", padding: "4px 0",
+                    }}>
+                      <span>Page {page} / {totalPages}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <PagBtn disabled={page <= 1}           onClick={() => setPage(page - 1)}><ChevronLeft  size={14} /></PagBtn>
+                        <PagBtn disabled={page >= totalPages}  onClick={() => setPage(page + 1)}><ChevronRight size={14} /></PagBtn>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
