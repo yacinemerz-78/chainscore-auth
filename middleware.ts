@@ -144,7 +144,8 @@ export async function middleware(request: NextRequest) {
   //                 sur une route JSON casse les fetch() côté client
   const isRegisterPath = pathname.startsWith("/register");
   const isApiPath      = pathname.startsWith("/api");
-  if (!isRegisterPath && !isApiPath && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const isSettingsPath = pathname.startsWith("/settings");
+  if (!isRegisterPath && !isApiPath && !isSettingsPath && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const serviceSupabase = createServerClient<any>(  // eslint-disable-line @typescript-eslint/no-explicit-any
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
