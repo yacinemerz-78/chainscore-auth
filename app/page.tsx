@@ -11,6 +11,7 @@ import Link from "next/link";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import Logo from "@/components/ui/Logo";
 import { CheckCircle2, Zap, Bell, Shield, ArrowRight } from "lucide-react";
+import Showreel from "@/components/landing/Showreel";
 
 const MAIN_APP_URL = process.env.NEXT_PUBLIC_MAIN_APP_URL ?? "https://chainscore-app.vercel.app";
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL ?? "";
@@ -143,6 +144,9 @@ export default async function LandingPage() {
             </span>
           </p>
         </section>
+
+        {/* ── Showreel interactif ──────────────────────────────────────── */}
+        <Showreel />
 
         {/* ── Fonctionnalités ───────────────────────────────────────────── */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20">
