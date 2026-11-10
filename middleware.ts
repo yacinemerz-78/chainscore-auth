@@ -131,10 +131,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Vérification essai / abonnement ──────────────────────────────────────
-  // On ne vérifie pas pour /register/* (checkout, confirmation…) pour éviter
-  // une boucle de redirection infinie.
+  // Exclure :
+  // - /register/* : évite la boucle infinie vers /register/checkout
+  // - /api/*      : les routes API ont leur propre auth ; une redirection 302
+  //                 sur une route JSON casse les fetch() côté client
   const isRegisterPath = pathname.startsWith("/register");
-  if (!isRegisterPath && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const isApiPath      = pathname.startsWith("/api");
+  if (!isRegisterPath && !isApiPath && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const serviceSupabase = createServerClient<any>(  // eslint-disable-line @typescript-eslint/no-explicit-any
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
