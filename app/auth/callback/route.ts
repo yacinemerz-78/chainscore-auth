@@ -78,6 +78,13 @@ export async function GET(request: Request) {
         subscription?.status === "active";
 
       if (hasAccess) {
+        // Transmettre la session via hash fragment (non logué côté serveur)
+        // pour permettre à index.html (domaine différent) d'accéder au token
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const hash = `#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token ?? "")}&expires_in=${session.expires_in ?? 3600}`;
+          return NextResponse.redirect(`${MAIN_APP_URL}/${hash}`);
+        }
         return NextResponse.redirect(MAIN_APP_URL);
       }
 
