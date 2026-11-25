@@ -2,28 +2,34 @@
  * GET /api/cron/daily-report
  *
  * Cron Vercel — déclenché chaque matin à 7h00 UTC.
- * Envoie à chaque utilisateur éligible un bilan crypto personnalisé sur Telegram.
+ * Envoie à chaque utilisateur éligible un bilan personnalisé :
+ *   - par e-mail (Resend) — tous les abonnés actifs/trialing avec e-mail
+ *   - par Telegram — uniquement ceux qui ont lié leur compte Telegram
  *
  * Critères d'éligibilité :
  *   - Abonnement Stripe actif (status "active") ou en essai valide (status "trialing")
- *   - telegram_chat_id lié dans profiles
  *   - Portefeuille non vide dans public.portfolios (colonne items JSONB)
  *
- * Les utilisateurs sans Telegram, sans abonnement valide ou avec un portefeuille
- * vide sont ignorés silencieusement (aucun message envoyé).
+ * Skip silencieux si :
+ *   - Pas d'abonnement valide
+ *   - Portfolio vide ou inexistant
+ *   - Aucun e-mail ni Telegram disponible
  *
  * Sécurité :
  *   - Vérifie Authorization: Bearer <CRON_SECRET>
  *   - Utilise exclusivement SUPABASE_SERVICE_ROLE_KEY côté serveur
- *   - TELEGRAM_BOT_TOKEN utilisé côté serveur uniquement
+ *   - TELEGRAM_BOT_TOKEN et RESEND_API_KEY utilisés côté serveur uniquement
  *
- * Variables d'environnement requises (Vercel > chainscore-auth) :
+ * Variables d'environnement requises (Vercel > chainscore-auth > Production) :
  *   CRON_SECRET               — secret partagé avec Vercel Cron
  *   SUPABASE_SERVICE_ROLE_KEY — clé service_role Supabase (bypass RLS)
  *   NEXT_PUBLIC_SUPABASE_URL  — URL du projet Supabase
- *   TELEGRAM_BOT_TOKEN        — token du bot Telegram
+ *   RESEND_API_KEY            — clé API Resend (re_xxxx...)
+ *   RESEND_FROM_EMAIL         — expéditeur (optionnel, défaut: onboarding@resend.dev)
+ *   TELEGRAM_BOT_TOKEN        — token du bot Telegram (optionnel)
  */
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,7 +39,7 @@ interface PortfolioItem {
   id: string;        // CoinGecko ID (ex: "bitcoin")
   name: string;      // Nom lisible (ex: "Bitcoin")
   symbol: string;    // Symbole (ex: "BTC")
-  thumb?: string;    // URL miniature (ignorée ici)
+  thumb?: string;    // URL miniature
   qty: number;       // Quantité détenue
   buyPrice: number;  // Prix d'achat dans la devise `pair`
   pair: string;      // Devise de référence (ex: "eur", "usd", "btc")
@@ -49,10 +55,21 @@ interface FearGreedData {
   classification: string;
 }
 
+interface PortfolioStats {
+  totalValeur: number;
+  totalInvesti: number;
+  canComputePnl: boolean;
+  lines: Array<{ symbol: string; valeurEur: number; change24h: number | null; priceAvailable: boolean }>;
+  fearGreed: FearGreedData | null;
+}
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const CRON_SECRET    = process.env.CRON_SECRET ?? "";
 const BOT_TOKEN      = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
+const FROM_EMAIL     = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
+const APP_URL        = "https://chainscore-app.vercel.app";
 const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 
 // ─── Handler principal ────────────────────────────────────────────────────────
@@ -63,15 +80,16 @@ export async function GET(req: NextRequest) {
   if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (!BOT_TOKEN) {
-    console.error("[cron/daily-report] TELEGRAM_BOT_TOKEN manquant");
-    return NextResponse.json({ error: "TELEGRAM_BOT_TOKEN manquant" }, { status: 500 });
+  if (!RESEND_API_KEY) {
+    console.error("[cron/daily-report] RESEND_API_KEY manquante");
+    return NextResponse.json({ error: "RESEND_API_KEY manquante" }, { status: 500 });
   }
 
   const startTime = Date.now();
   const service   = await createServiceClient();
+  const resend    = new Resend(RESEND_API_KEY);
 
-  // ── 2. Profils avec Telegram lié + leur abonnement Stripe ─────────────────
+  // ── 2. Profils avec e-mail + abonnement Stripe + (optionnel) Telegram ──────
   const { data: profiles, error: profilesError } = await service
     .from("profiles")
     .select(`
@@ -83,8 +101,7 @@ export async function GET(req: NextRequest) {
         trial_end,
         current_period_end
       )
-    `)
-    .not("telegram_chat_id", "is", null);
+    `);
 
   if (profilesError) {
     console.error("[cron/daily-report] Erreur chargement profils :", profilesError.message);
@@ -132,7 +149,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Erreur DB portfolios" }, { status: 500 });
   }
 
-  // Index rapide user_id → items
+  // Index rapide user_id → items (uniquement si non vide)
   const portfolioMap = new Map<string, PortfolioItem[]>();
   for (const row of (portfolios ?? [])) {
     const p = row as { user_id: string; items: unknown };
@@ -140,10 +157,8 @@ export async function GET(req: NextRequest) {
     if (items.length > 0) {
       portfolioMap.set(p.user_id, items);
     }
-    // items vide ou absent → non inséré dans la map → skip silencieux
   }
 
-  // Utilisateurs avec un portefeuille non vide
   const usersWithPortfolio = eligibleProfiles.filter((profile) => {
     const id = (profile as Record<string, unknown>).id as string;
     return portfolioMap.has(id);
@@ -157,51 +172,401 @@ export async function GET(req: NextRequest) {
 
   // ── 5. Batch CoinGecko — une seule requête pour toutes les cryptos ─────────
   const allCoinIds = Array.from(
-    new Set(
-      Array.from(portfolioMap.values())
-        .flat()
-        .map((item) => item.id)
-    )
+    new Set(Array.from(portfolioMap.values()).flat().map((item) => item.id))
   );
-
   const prices = await fetchCoinGeckoPrices(allCoinIds);
 
   // ── 6. Fear & Greed Index (commun à tous les rapports) ────────────────────
   const fearGreed = await fetchFearGreed();
 
   // ── 7. Envoi personnalisé ─────────────────────────────────────────────────
-  let sent    = 0;
-  let skipped = eligibleProfiles.length - usersWithPortfolio.length; // déjà skippés à l'étape 4
-  let errors  = 0;
+  let emailSent    = 0;
+  let telegramSent = 0;
+  let skipped      = eligibleProfiles.length - usersWithPortfolio.length;
+  let errors       = 0;
 
   for (const profile of usersWithPortfolio) {
-    const p      = profile as Record<string, unknown>;
-    const chatId = p.telegram_chat_id as string;
-    const userId = p.id as string;
-    const items  = portfolioMap.get(userId)!;
+    const p        = profile as Record<string, unknown>;
+    const userId   = p.id as string;
+    const email    = p.email as string | null;
+    const chatId   = p.telegram_chat_id as string | null;
+    const items    = portfolioMap.get(userId)!;
+    const stats    = computeStats(items, prices, fearGreed);
 
-    const message = buildPersonalizedMessage(items, prices, fearGreed);
-    const ok      = await sendTelegramMessage(chatId, message);
+    // E-mail
+    if (email) {
+      const html = buildEmailHtml(email, stats);
+      const subject = buildEmailSubject(stats);
+      try {
+        const { error: emailError } = await resend.emails.send({
+          from:    FROM_EMAIL,
+          to:      email,
+          subject,
+          html,
+        });
+        if (emailError) {
+          console.error(`[cron/daily-report] Resend erreur pour ${email} :`, emailError);
+          errors++;
+        } else {
+          emailSent++;
+          console.log(`[cron/daily-report] ✉️  E-mail envoyé à ${email}`);
+        }
+      } catch (err) {
+        console.error(`[cron/daily-report] Resend exception pour ${email} :`, err);
+        errors++;
+      }
+    }
 
-    if (ok) {
-      sent++;
-      console.log(`[cron/daily-report] ✅ Rapport envoyé à ${p.email as string}`);
-    } else {
-      errors++;
-      console.error(`[cron/daily-report] ❌ Échec Telegram pour ${p.email as string}`);
+    // Telegram (si lié)
+    if (chatId && BOT_TOKEN) {
+      const telegramMsg = buildTelegramMessage(stats);
+      const ok          = await sendTelegramMessage(chatId, telegramMsg);
+      if (ok) {
+        telegramSent++;
+        console.log(`[cron/daily-report] 📱 Telegram envoyé à ${email ?? userId}`);
+      } else {
+        errors++;
+        console.error(`[cron/daily-report] ❌ Telegram échoué pour ${email ?? userId}`);
+      }
     }
   }
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[cron/daily-report] ✅ Terminé — ${sent} envois, ${skipped} skips, ${errors} erreurs en ${duration}s`);
+  console.log(`[cron/daily-report] ✅ Terminé — email:${emailSent} telegram:${telegramSent} skips:${skipped} erreurs:${errors} en ${duration}s`);
 
   return NextResponse.json({
-    sent,
+    email_sent:    emailSent,
+    telegram_sent: telegramSent,
     skipped,
     errors,
-    eligible: eligibleProfiles.length,
+    eligible:   eligibleProfiles.length,
     duration_s: parseFloat(duration),
   });
+}
+
+// ─── Calcul des statistiques du portefeuille ──────────────────────────────────
+
+function computeStats(
+  items: PortfolioItem[],
+  prices: Record<string, CoinGeckoPrice>,
+  fearGreed: FearGreedData | null
+): PortfolioStats {
+  let totalValeur  = 0;
+  let totalInvesti = 0;
+  let canComputePnl = true;
+  const lines: PortfolioStats["lines"] = [];
+
+  for (const item of items) {
+    const priceData = prices[item.id];
+    const priceEur  = priceData?.eur ?? null;
+    const change24h = priceData?.eur_24h_change ?? null;
+
+    if (priceEur === null) {
+      lines.push({ symbol: item.symbol, valeurEur: 0, change24h: null, priceAvailable: false });
+      canComputePnl = false;
+      continue;
+    }
+
+    const valeurEur = item.qty * priceEur;
+    totalValeur    += valeurEur;
+
+    if (item.pair === "eur" && item.buyPrice > 0) {
+      totalInvesti += item.qty * item.buyPrice;
+    } else {
+      canComputePnl = false;
+    }
+
+    lines.push({ symbol: item.symbol, valeurEur, change24h, priceAvailable: true });
+  }
+
+  return { totalValeur, totalInvesti, canComputePnl, lines, fearGreed };
+}
+
+// ─── Gabarit e-mail HTML ──────────────────────────────────────────────────────
+
+function buildEmailSubject(stats: PortfolioStats): string {
+  const { totalValeur, totalInvesti, canComputePnl } = stats;
+  if (canComputePnl && totalInvesti > 0) {
+    const pl  = totalValeur - totalInvesti;
+    const pct = ((pl / totalInvesti) * 100).toFixed(1);
+    const sign = pl >= 0 ? "+" : "";
+    return `📊 Votre bilan crypto du jour — ${fmtMoneyEmail(totalValeur)} (${sign}${pct}%)`;
+  }
+  return `📊 Votre bilan crypto du jour — ${fmtMoneyEmail(totalValeur)}`;
+}
+
+function buildEmailHtml(email: string, stats: PortfolioStats): string {
+  const { totalValeur, totalInvesti, canComputePnl, lines, fearGreed } = stats;
+  const pnl     = canComputePnl && totalInvesti > 0 ? totalValeur - totalInvesti : null;
+  const pnlPct  = pnl !== null && totalInvesti > 0 ? (pnl / totalInvesti) * 100 : null;
+  const score   = pnlPct !== null ? computeHealthScore(pnlPct) : null;
+
+  const dateStr = new Date().toLocaleDateString("fr-FR", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+
+  // Couleurs
+  const positif    = "#22c55e";
+  const negatif    = "#f97316";
+  const neutre     = "#94a3b8";
+  const gold       = "#f59e0b";
+  const bgDark     = "#0f172a";
+  const bgPanel    = "#1e293b";
+  const bgBorder   = "#334155";
+  const textLight  = "#f1f5f9";
+  const textMuted  = "#94a3b8";
+
+  const pnlColor   = pnl === null ? neutre : pnl >= 0 ? positif : negatif;
+  const pnlLabel   = pnl === null ? "" : pnl >= 0
+    ? `+${fmtMoneyEmail(pnl)} (+${pnlPct!.toFixed(1)} %)`
+    : `${fmtMoneyEmail(pnl)} (${pnlPct!.toFixed(1)} %)`;
+
+  // Fear & Greed
+  let fgBlock = "";
+  if (fearGreed) {
+    const fg = fearGreed.value;
+    const fgEmoji = fg < 25 ? "🥶" : fg < 45 ? "😟" : fg < 55 ? "😐" : fg < 75 ? "🙂" : "🤩";
+    const fgLabel = fg < 25 ? "Panique générale" : fg < 45 ? "Peur" : fg < 55 ? "Neutre"
+      : fg < 75 ? "Optimisme" : "Euphorie totale";
+    const fgAdvice = fg < 25
+      ? "Tout le monde a peur. Historiquement, c'est souvent dans ces périodes que les prix sont les plus bas. Ne vendez pas sous le coup de la peur."
+      : fg < 45
+      ? "Le marché est frileux. Les investisseurs patients considèrent souvent ces zones comme des opportunités d'achat progressif (DCA)."
+      : fg <= 55
+      ? "Ni peur ni euphorie : le marché hésite. Bon moment pour analyser tranquillement les fondamentaux."
+      : fg <= 75
+      ? "L'ambiance est positive. Gardez la tête froide et vos objectifs de prise de profit en vue."
+      : "L'ambiance est très euphorique : attention à ne pas acheter sous le coup de l'excitation. C'est dans l'euphorie que se forment les sommets.";
+
+    fgBlock = `
+      <tr><td style="padding:0 24px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:${bgPanel};border:1px solid ${bgBorder};border-radius:12px;overflow:hidden;">
+          <tr>
+            <td style="padding:16px 20px;">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${textMuted};margin-bottom:8px;">Sentiment du marché</div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:28px;">${fgEmoji}</span>
+                <div>
+                  <div style="font-size:18px;font-weight:700;color:${textLight};">${fg}/100 — ${fgLabel}</div>
+                  <div style="font-size:12px;color:${textMuted};margin-top:4px;line-height:1.5;">${fgAdvice}</div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>`;
+  }
+
+  // Score santé
+  let scoreBlock = "";
+  if (score !== null) {
+    const scoreEmoji = score >= 75 ? "☀️" : score >= 50 ? "⛅" : "🌩️";
+    const scoreLabel = score >= 75 ? "Grand beau temps" : score >= 50 ? "Ciel variable" : "Avis de tempête";
+    const scoreColor = score >= 75 ? positif : score >= 50 ? gold : negatif;
+    scoreBlock = `
+      <tr><td style="padding:0 24px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:${bgPanel};border:1px solid ${bgBorder};border-radius:12px;">
+          <tr>
+            <td style="padding:16px 20px;">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${textMuted};margin-bottom:8px;">Équilibre de mon portefeuille</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span style="font-size:28px;">${scoreEmoji}</span>
+                  <span style="font-size:28px;font-weight:700;font-family:monospace;color:${textLight};">${score}<span style="font-size:14px;color:${textMuted};">/100</span></span>
+                </div>
+                <span style="font-weight:600;color:${scoreColor};">${scoreLabel}</span>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>`;
+  }
+
+  // Lignes du portefeuille
+  const linesHtml = lines.map(l => {
+    if (!l.priceAvailable) {
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};font-size:13px;color:${textLight};">${l.symbol.toUpperCase()}</td>
+        <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};text-align:right;font-size:13px;color:${textMuted};">prix indisponible</td>
+        <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};text-align:right;"></td>
+      </tr>`;
+    }
+    const c24Color = l.change24h === null ? textMuted : l.change24h >= 0 ? positif : negatif;
+    const c24Str   = l.change24h !== null
+      ? `${l.change24h >= 0 ? "+" : ""}${l.change24h.toFixed(1)} %`
+      : "—";
+    return `<tr>
+      <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};font-size:13px;font-weight:600;color:${textLight};">${l.symbol.toUpperCase()}</td>
+      <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};text-align:right;font-size:13px;font-family:monospace;color:${textLight};">${fmtMoneyEmail(l.valeurEur)}</td>
+      <td style="padding:8px 0;border-bottom:1px solid ${bgBorder};text-align:right;font-size:12px;font-family:monospace;color:${c24Color};">${c24Str}</td>
+    </tr>`;
+  }).join("");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Votre bilan crypto MyChainScore</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0f1e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0f1e;padding:32px 0 48px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
+
+        <!-- En-tête -->
+        <tr><td style="padding:0 24px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td>
+                <div style="font-size:22px;font-weight:800;color:${textLight};">MyChainScore</div>
+                <div style="font-size:13px;color:${textMuted};margin-top:4px;text-transform:capitalize;">${dateStr}</div>
+              </td>
+              <td align="right">
+                <span style="display:inline-block;background:${gold};color:#0f172a;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;">BILAN DU JOUR</span>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- ═══════════════════════════════════════════════════════
+             BLOC 1 — ESSENTIEL (actif)
+             ═══════════════════════════════════════════════════════ -->
+
+        <!-- Valeur totale + Gains/pertes -->
+        <tr><td style="padding:0 24px 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:${bgDark};border:1px solid ${bgBorder};border-radius:16px;overflow:hidden;">
+            <tr>
+              <td width="50%" style="padding:20px 24px;border-right:1px solid ${bgBorder};">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${textMuted};margin-bottom:6px;">Ce que ça vaut aujourd'hui</div>
+                <div style="font-size:26px;font-weight:800;font-family:monospace;color:${textLight};">${fmtMoneyEmail(totalValeur)}</div>
+              </td>
+              <td width="50%" style="padding:20px 24px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${textMuted};margin-bottom:6px;">Gains / pertes estimés</div>
+                ${pnl !== null
+                  ? `<div style="font-size:22px;font-weight:800;font-family:monospace;color:${pnlColor};">${pnlLabel}</div>`
+                  : `<div style="font-size:14px;color:${textMuted};">Ajoutez vos prix d'achat en EUR<br>pour calculer vos gains.</div>`
+                }
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- Score santé -->
+        ${scoreBlock}
+
+        <!-- Sentiment du marché (Fear & Greed) -->
+        ${fgBlock}
+
+        <!-- ═══════════════════════════════════════════════════════
+             DÉTAILS — Répartition par actif
+             ═══════════════════════════════════════════════════════ -->
+        <tr><td style="padding:0 24px 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:${bgPanel};border:1px solid ${bgBorder};border-radius:12px;">
+            <tr>
+              <td style="padding:16px 20px 4px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:${textMuted};margin-bottom:12px;">Répartition</div>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <th style="text-align:left;font-size:11px;color:${textMuted};padding-bottom:8px;font-weight:500;">Actif</th>
+                    <th style="text-align:right;font-size:11px;color:${textMuted};padding-bottom:8px;font-weight:500;">Valeur</th>
+                    <th style="text-align:right;font-size:11px;color:${textMuted};padding-bottom:8px;font-weight:500;">24 h</th>
+                  </tr>
+                  ${linesHtml}
+                </table>
+              </td>
+            </tr>
+            <tr><td style="padding:12px 20px 16px;">
+              <div style="font-size:11px;color:${textMuted};">
+                Prix moyen payé calculé uniquement pour les positions saisies en EUR.<br>
+                Les valeurs proviennent de CoinGecko et sont indicatives.
+              </div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- ═══════════════════════════════════════════════════════
+             BLOC 2 — RÉSERVÉ (désactivé, structure prête)
+             Ce bloc accueillera ultérieurement un condensé
+             fondamental par actif détenu (score, signal du jour).
+             ═══════════════════════════════════════════════════════
+        <tr><td style="padding:0 24px 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#1e293b;border:1px dashed #334155;border-radius:12px;">
+            <tr><td style="padding:20px;text-align:center;color:#475569;font-size:13px;">
+              [Bloc analyse fondamentale par actif — à venir]
+            </td></tr>
+          </table>
+        </td></tr>
+        -->
+
+        <!-- CTA -->
+        <tr><td style="padding:0 24px 24px;text-align:center;">
+          <a href="${APP_URL}" target="_blank"
+             style="display:inline-block;background:${gold};color:#0f172a;font-weight:700;font-size:14px;padding:12px 28px;border-radius:12px;text-decoration:none;">
+            Ouvrir mon tableau de bord →
+          </a>
+        </td></tr>
+
+        <!-- Pied de page -->
+        <tr><td style="padding:0 24px;">
+          <div style="border-top:1px solid ${bgBorder};padding-top:16px;font-size:11px;color:${textMuted};text-align:center;line-height:1.6;">
+            <strong style="color:${textLight};">⚠️ Pas un conseil financier.</strong> Les données sont indicatives et ne constituent pas une recommandation d'achat ou de vente.
+            Investir comporte des risques de perte en capital.<br><br>
+            Vous recevez cet e-mail car votre compte <strong>${email}</strong> est abonné à MyChainScore.<br>
+            Gérez votre abonnement sur <a href="${APP_URL}" style="color:${gold};">chainscore-app.vercel.app</a>
+          </div>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ─── Message Telegram (conservé, en parallèle) ───────────────────────────────
+
+function buildTelegramMessage(stats: PortfolioStats): string {
+  const { totalValeur, totalInvesti, canComputePnl, lines, fearGreed } = stats;
+
+  const dateStr = new Date().toLocaleDateString("fr-FR", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+
+  const pnl    = canComputePnl && totalInvesti > 0 ? totalValeur - totalInvesti : null;
+  const pnlPct = pnl !== null && totalInvesti > 0 ? (pnl / totalInvesti) * 100 : null;
+  const score  = pnlPct !== null ? computeHealthScore(pnlPct) : null;
+
+  const linesStr = lines.map(l => {
+    if (!l.priceAvailable) return `• ${l.symbol.toUpperCase()} — prix indisponible`;
+    const c24 = l.change24h !== null
+      ? ` · 24h: ${l.change24h >= 0 ? "+" : ""}${l.change24h.toFixed(1)}%`
+      : "";
+    return `• *${l.symbol.toUpperCase()}* ${fmtMoneyTelegram(l.valeurEur)}${c24}`;
+  }).join("\n");
+
+  let msg = `🌅 *Bilan MyChainScore du ${dateStr}*\n\n${linesStr}\n\n`;
+  msg    += `💼 *Ce que ça vaut* : ${fmtMoneyTelegram(totalValeur)}\n`;
+
+  if (pnl !== null && pnlPct !== null) {
+    const sign = pnl >= 0 ? "📈 +" : "📉 ";
+    msg += `${sign}*Gains/pertes* : ${fmtMoneyTelegram(pnl)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
+  }
+
+  if (score !== null) {
+    const emoji = score >= 75 ? "☀️" : score >= 50 ? "⛅" : "🌩️";
+    msg += `${emoji} *Équilibre* : ${score}/100\n`;
+  }
+
+  if (fearGreed) {
+    const fg      = fearGreed.value;
+    const fgEmoji = fg < 25 ? "🥶" : fg < 45 ? "😟" : fg < 55 ? "😐" : fg < 75 ? "🙂" : "🤩";
+    const fgLabel = fg < 25 ? "Panique" : fg < 45 ? "Peur" : fg < 55 ? "Neutre"
+      : fg < 75 ? "Optimisme" : "Euphorie";
+    msg += `\n${fgEmoji} *Sentiment du marché* : ${fg}/100 — ${fgLabel}`;
+  }
+
+  return msg;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -243,100 +608,21 @@ async function fetchFearGreed(): Promise<FearGreedData | null> {
   }
 }
 
-/**
- * Construit le message Telegram personnalisé.
- *
- * Les items utilisent `buyPrice` (en `pair`) comme prix d'achat.
- * On convertit tout en EUR pour le rapport (seul CoinGecko EUR est disponible).
- * Si la paire d'achat n'est pas EUR, on ne peut pas calculer le P&L exact —
- * dans ce cas on affiche la valeur actuelle sans P&L.
- */
-function buildPersonalizedMessage(
-  items: PortfolioItem[],
-  prices: Record<string, CoinGeckoPrice>,
-  fearGreed: FearGreedData | null
-): string {
-  const dateStr = new Date().toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day:     "numeric",
-    month:   "long",
-    year:    "numeric",
-  });
-
-  let totalValeur  = 0;
-  let totalInvesti = 0;
-  let canComputePnl = true;
-  const lines: string[] = [];
-
-  for (const item of items) {
-    const priceData = prices[item.id];
-    const priceEur  = priceData?.eur ?? null;
-    const change24h = priceData?.eur_24h_change;
-
-    if (priceEur === null) {
-      lines.push(`• ${item.symbol.toUpperCase()} — prix indisponible`);
-      canComputePnl = false;
-      continue;
-    }
-
-    const valeurEur = item.qty * priceEur;
-    totalValeur    += valeurEur;
-
-    // P&L calculable uniquement si l'achat était en EUR
-    if (item.pair === "eur" && item.buyPrice > 0) {
-      totalInvesti += item.qty * item.buyPrice;
-    } else {
-      canComputePnl = false;
-    }
-
-    const c24Str = change24h != null
-      ? ` · 24h: ${change24h >= 0 ? "+" : ""}${change24h.toFixed(1)}%`
-      : "";
-
-    lines.push(
-      `• *${item.symbol.toUpperCase()}* ${formatMoney(valeurEur)}${c24Str}`
-    );
-  }
-
-  const totalPnl  = canComputePnl && totalInvesti > 0 ? totalValeur - totalInvesti : null;
-  const totalPct  = totalPnl !== null && totalInvesti > 0
-    ? (totalPnl / totalInvesti) * 100
-    : null;
-  const pnlSign   = totalPnl !== null && totalPnl >= 0 ? "📈" : "📉";
-  const score     = totalPct !== null ? computeScore(totalPct) : null;
-
-  let msg = `🌅 *Bilan MyChainScore du ${dateStr}*\n\n`;
-  msg    += lines.join("\n") + "\n\n";
-  msg    += `💼 *Total* : ${formatMoney(totalValeur)}\n`;
-
-  if (totalPnl !== null && totalPct !== null) {
-    msg += `${pnlSign} *P&L* : ${totalPnl >= 0 ? "+" : ""}${formatMoney(totalPnl)} (${totalPct >= 0 ? "+" : ""}${totalPct.toFixed(1)}%)\n`;
-  }
-
-  if (score !== null) {
-    msg += `🏆 *Score santé* : ${score}/100\n`;
-  }
-
-  if (fearGreed) {
-    const fg      = fearGreed.value;
-    const fgEmoji = fg < 25 ? "😱" : fg < 45 ? "😟" : fg < 55 ? "😐" : fg < 75 ? "😊" : "🤑";
-    msg += `\n${fgEmoji} *Fear & Greed* : ${fg}/100 — ${fearGreed.classification}`;
-  }
-
-  return msg;
-}
-
 /** Score de santé simplifié basé sur le P&L en % */
-function computeScore(pctPnl: number): number {
+function computeHealthScore(pctPnl: number): number {
   const delta = Math.min(Math.max(pctPnl * 2, -50), 50);
   return Math.round(50 + delta);
 }
 
-function formatMoney(n: number): string {
+function fmtMoneyEmail(n: number): string {
   return n.toLocaleString("fr-FR", {
-    style:                "currency",
-    currency:             "EUR",
-    maximumFractionDigits: 0,
+    style: "currency", currency: "EUR", maximumFractionDigits: 0,
+  });
+}
+
+function fmtMoneyTelegram(n: number): string {
+  return n.toLocaleString("fr-FR", {
+    style: "currency", currency: "EUR", maximumFractionDigits: 0,
   });
 }
 
